@@ -7,6 +7,8 @@ st.set_page_config(page_title="Perbandingan Data Impor", page_icon="📊", layou
 st.title("📊 Perbandingan Data Realisasi Impor")
 st.markdown("---")
 
+REQUIRED_COLUMNS = ['NO', 'CAR', 'NO. PIB', 'TGL. PIB', 'TGL. SPPB', 'NPWP', 'NAMA IMPORTIR', 'ALAMAT', 'STATUS', 'STATUS PERIKSA']
+
 st.markdown("""
 ### Petunjuk Penggunaan:
 1. Upload **File Tarikan** (data hasil tarikan dari sistem)
@@ -14,6 +16,8 @@ st.markdown("""
 3. Sistem akan mengidentifikasi data yang belum tersedia di file Anda
 4. Untuk data tersebut, akan dicek apakah sudah ada SKI-nya atau tidak
 """)
+
+st.info(f"**Kolom yang akan diambil:** {', '.join(REQUIRED_COLUMNS)}")
 
 col1, col2 = st.columns(2)
 
@@ -25,26 +29,57 @@ with col2:
     st.subheader("📁 File Data Anda")
     file_upload = st.file_uploader("Upload file data Anda untuk dibandingkan", type=['xlsx', 'xls'], key="upload")
 
+def extract_columns(df, required_cols):
+    """Extract only required columns from dataframe, handling column name variations"""
+    available_cols = []
+    col_mapping = {}
+    
+    for req_col in required_cols:
+        for df_col in df.columns:
+            if req_col.lower().strip() == str(df_col).lower().strip():
+                available_cols.append(df_col)
+                col_mapping[df_col] = req_col
+                break
+            elif req_col.lower().replace('.', '').replace(' ', '') == str(df_col).lower().replace('.', '').replace(' ', ''):
+                available_cols.append(df_col)
+                col_mapping[df_col] = req_col
+                break
+    
+    if available_cols:
+        df_filtered = df[available_cols].copy()
+        df_filtered.columns = [col_mapping.get(col, col) for col in df_filtered.columns]
+        return df_filtered, available_cols
+    return df, list(df.columns)
+
 if file_tarikan and file_upload:
     try:
-        df_tarikan = pd.read_excel(file_tarikan)
-        df_upload = pd.read_excel(file_upload)
+        df_tarikan_raw = pd.read_excel(file_tarikan)
+        df_upload_raw = pd.read_excel(file_upload)
+        
+        df_tarikan, tarikan_cols_found = extract_columns(df_tarikan_raw, REQUIRED_COLUMNS)
+        df_upload, upload_cols_found = extract_columns(df_upload_raw, REQUIRED_COLUMNS)
         
         st.markdown("---")
-        st.subheader("📋 Preview Data")
+        st.subheader("📋 Preview Data (Kolom yang Diambil)")
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**Data Tarikan (Sistem)**")
             st.write(f"Jumlah baris: {len(df_tarikan)}")
-            st.write(f"Kolom: {', '.join(df_tarikan.columns.tolist())}")
+            st.write(f"Kolom ditemukan: {len(tarikan_cols_found)} dari {len(REQUIRED_COLUMNS)}")
+            missing_tarikan = set(REQUIRED_COLUMNS) - set(df_tarikan.columns)
+            if missing_tarikan:
+                st.warning(f"Kolom tidak ditemukan: {', '.join(missing_tarikan)}")
             st.dataframe(df_tarikan.head(10), use_container_width=True)
         
         with col2:
             st.markdown("**Data Upload Anda**")
             st.write(f"Jumlah baris: {len(df_upload)}")
-            st.write(f"Kolom: {', '.join(df_upload.columns.tolist())}")
+            st.write(f"Kolom ditemukan: {len(upload_cols_found)} dari {len(REQUIRED_COLUMNS)}")
+            missing_upload = set(REQUIRED_COLUMNS) - set(df_upload.columns)
+            if missing_upload:
+                st.warning(f"Kolom tidak ditemukan: {', '.join(missing_upload)}")
             st.dataframe(df_upload.head(10), use_container_width=True)
         
         st.markdown("---")
@@ -53,27 +88,21 @@ if file_tarikan and file_upload:
         common_cols = list(set(df_tarikan.columns) & set(df_upload.columns))
         
         if common_cols:
+            default_key = 'NO. PIB' if 'NO. PIB' in common_cols else common_cols[0]
+            default_idx = common_cols.index(default_key) if default_key in common_cols else 0
+            
             key_column = st.selectbox(
-                "Pilih kolom kunci untuk perbandingan (misalnya: No. Pengajuan, ID, dll)",
+                "Pilih kolom kunci untuk perbandingan",
                 options=common_cols,
-                index=0
+                index=default_idx
             )
             
-            ski_columns = [col for col in df_tarikan.columns if 'ski' in col.lower() or 'surat' in col.lower() or 'keterangan' in col.lower() or 'izin' in col.lower()]
-            
-            if ski_columns:
-                ski_column = st.selectbox(
-                    "Pilih kolom SKI (Surat Keterangan Impor)",
-                    options=ski_columns + ['Lainnya...'],
-                    index=0
-                )
-                if ski_column == 'Lainnya...':
-                    ski_column = st.selectbox("Pilih kolom SKI dari semua kolom:", options=df_tarikan.columns.tolist())
-            else:
-                ski_column = st.selectbox(
-                    "Pilih kolom SKI (Surat Keterangan Impor)",
-                    options=df_tarikan.columns.tolist()
-                )
+            ski_options = list(df_tarikan.columns)
+            ski_column = st.selectbox(
+                "Pilih kolom untuk cek status SKI",
+                options=ski_options,
+                index=ski_options.index('STATUS') if 'STATUS' in ski_options else 0
+            )
             
             if st.button("🔍 Bandingkan Data", type="primary"):
                 st.markdown("---")

@@ -8,8 +8,6 @@ st.set_page_config(page_title="Perbandingan Data Impor", page_icon="📊", layou
 st.title("📊 Perbandingan Data Realisasi Impor")
 st.markdown("---")
 
-REQUIRED_COLUMNS = ['NO', 'CUSDECID', 'NO. INVOICE', 'TGL. INVOICE', 'NO. PIB', 'TGL. PIB', 'TGL. SPPB', 'SERIAL', 'URAIAN BARANG', 'NO. HS', 'URAIAN HS', 'NEGARA ASAL', 'JML SATUAN', 'SATUAN', 'KEMASAN', 'TGL. REALISASI', 'NO. SKI', 'TGL. SKI', 'NPWP', 'NAMA IMPORTIR', 'ALAMAT', 'KPBC', 'PEL. MUAT', 'PEL. BONGKAR', 'STATUS', 'STATUS PERIKSA']
-
 st.markdown("""
 ### Petunjuk Penggunaan:
 1. Upload **File Tarikan** (data hasil tarikan dari sistem)
@@ -18,6 +16,7 @@ st.markdown("""
 4. Sistem akan:
    - Mengidentifikasi data tarikan yang belum ada di file Anda (berdasarkan NO. PIB)
    - Sinkronisasi NO. INVOICE dari hasil perbandingan dengan file Invoice
+   - Membersihkan tanda ; dari NO. INVOICE secara otomatis
 """)
 
 col1, col2, col3 = st.columns(3)
@@ -35,7 +34,7 @@ with col3:
     file_invoice = st.file_uploader("File untuk sinkronisasi Invoice", type=['xlsx', 'xls'], key="invoice")
 
 def clean_number(value):
-    """Membersihkan nilai dari tanda kutip ' dan " serta karakter non-numerik lainnya"""
+    """Membersihkan nilai dari tanda kutip ' dan " serta karakter non-numerik lainnya untuk NO. PIB"""
     if pd.isna(value):
         return ''
     val_str = str(value).strip()
@@ -44,62 +43,87 @@ def clean_number(value):
     return val_str
 
 def clean_invoice(value):
-    """Membersihkan nilai invoice dari tanda kutip"""
+    """Membersihkan nilai invoice dari tanda kutip dan ; di awal/akhir"""
     if pd.isna(value):
         return ''
     val_str = str(value).strip()
     val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
-    return val_str.strip()
+    val_str = val_str.strip(';').strip()
+    return val_str
 
 def get_invoice_list(value):
-    """Memecah invoice yang mengandung ; menjadi list"""
+    """Memecah invoice yang mengandung ; menjadi list dan membersihkan setiap item"""
     if pd.isna(value):
         return []
-    val_str = clean_invoice(value)
+    val_str = str(value).strip()
+    val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
+    
     if ';' in val_str:
-        invoices = [inv.strip() for inv in val_str.split(';') if inv.strip()]
+        invoices = [inv.strip().strip(';').strip() for inv in val_str.split(';')]
+        invoices = [inv for inv in invoices if inv]
         return invoices
+    
+    val_str = val_str.strip(';').strip()
     return [val_str] if val_str else []
 
-def extract_columns(df, required_cols):
-    """Extract only required columns from dataframe, handling column name variations"""
-    available_cols = []
-    col_mapping = {}
-    
-    for req_col in required_cols:
-        for df_col in df.columns:
-            if req_col.lower().strip() == str(df_col).lower().strip():
-                available_cols.append(df_col)
-                col_mapping[df_col] = req_col
-                break
-            elif req_col.lower().replace('.', '').replace(' ', '') == str(df_col).lower().replace('.', '').replace(' ', ''):
-                available_cols.append(df_col)
-                col_mapping[df_col] = req_col
-                break
-    
-    if available_cols:
-        df_filtered = df[available_cols].copy()
-        df_filtered.columns = [col_mapping.get(col, col) for col in df_filtered.columns]
-        return df_filtered, available_cols
-    return df, list(df.columns)
+def find_invoice_column(df):
+    """Mencari kolom NO. INVOICE dengan berbagai variasi nama"""
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if 'invoice' in col_lower and 'no' in col_lower:
+            return col
+        if col_lower == 'no. invoice' or col_lower == 'no.invoice' or col_lower == 'noinvoice':
+            return col
+    for col in df.columns:
+        if 'invoice' in str(col).lower():
+            return col
+    return None
+
+def find_pib_column(df):
+    """Mencari kolom NO. PIB dengan berbagai variasi nama"""
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if 'pib' in col_lower and 'no' in col_lower:
+            return col
+        if col_lower == 'no. pib' or col_lower == 'no.pib' or col_lower == 'nopib':
+            return col
+    for col in df.columns:
+        if 'pib' in str(col).lower():
+            return col
+    return None
 
 if file_tarikan and file_upload:
     try:
-        df_tarikan_raw = pd.read_excel(file_tarikan)
-        df_upload_raw = pd.read_excel(file_upload)
+        df_tarikan = pd.read_excel(file_tarikan)
+        df_upload = pd.read_excel(file_upload)
         
-        df_tarikan, tarikan_cols_found = extract_columns(df_tarikan_raw, REQUIRED_COLUMNS)
-        df_upload, upload_cols_found = extract_columns(df_upload_raw, REQUIRED_COLUMNS)
+        pib_col_tarikan = find_pib_column(df_tarikan)
+        pib_col_upload = find_pib_column(df_upload)
+        invoice_col_tarikan = find_invoice_column(df_tarikan)
+        
+        if not pib_col_tarikan:
+            st.error("Kolom NO. PIB tidak ditemukan di File Tarikan")
+            st.stop()
+        if not pib_col_upload:
+            st.error("Kolom NO. PIB tidak ditemukan di File Data Anda")
+            st.stop()
         
         df_invoice = None
         invoice_set = set()
+        invoice_col_invoice = None
+        
         if file_invoice:
-            df_invoice_raw = pd.read_excel(file_invoice)
-            df_invoice, _ = extract_columns(df_invoice_raw, REQUIRED_COLUMNS)
-            if 'NO. INVOICE' in df_invoice.columns:
-                for inv_value in df_invoice['NO. INVOICE'].dropna():
+            df_invoice = pd.read_excel(file_invoice)
+            invoice_col_invoice = find_invoice_column(df_invoice)
+            
+            if invoice_col_invoice:
+                st.success(f"Kolom invoice ditemukan: **{invoice_col_invoice}**")
+                for inv_value in df_invoice[invoice_col_invoice].dropna():
                     inv_list = get_invoice_list(inv_value)
                     invoice_set.update(inv_list)
+                st.info(f"Total **{len(invoice_set)}** NO. INVOICE unik ditemukan (sudah dibersihkan dari tanda ;)")
+            else:
+                st.warning("Kolom NO. INVOICE tidak ditemukan di File Invoice")
         
         st.markdown("---")
         st.subheader("📋 Preview Data")
@@ -109,16 +133,27 @@ if file_tarikan and file_upload:
         with col1:
             st.markdown("**Data Tarikan (Sistem)**")
             st.write(f"Jumlah baris: {len(df_tarikan)}")
+            st.write(f"Kolom NO. PIB: {pib_col_tarikan}")
+            if invoice_col_tarikan:
+                st.write(f"Kolom NO. INVOICE: {invoice_col_tarikan}")
             st.dataframe(df_tarikan.head(5), use_container_width=True)
         
         with col2:
             st.markdown("**Data Upload Anda**")
             st.write(f"Jumlah baris: {len(df_upload)}")
+            st.write(f"Kolom NO. PIB: {pib_col_upload}")
             st.dataframe(df_upload.head(5), use_container_width=True)
         
         if file_invoice and df_invoice is not None:
             st.markdown("**File Invoice**")
-            st.write(f"Jumlah baris: {len(df_invoice)}, Jumlah NO. INVOICE unik (termasuk yg dipisah ;): {len(invoice_set)}")
+            st.write(f"Jumlah baris: {len(df_invoice)}")
+            if invoice_col_invoice:
+                st.write(f"Kolom NO. INVOICE: {invoice_col_invoice}")
+                sample_invoices = df_invoice[invoice_col_invoice].head(5).tolist()
+                cleaned_samples = [get_invoice_list(inv) for inv in sample_invoices]
+                st.write("Contoh invoice (setelah dibersihkan):")
+                for orig, cleaned in zip(sample_invoices, cleaned_samples):
+                    st.write(f"  `{orig}` → `{cleaned}`")
             st.dataframe(df_invoice.head(5), use_container_width=True)
         
         st.markdown("---")
@@ -127,13 +162,13 @@ if file_tarikan and file_upload:
             st.markdown("---")
             st.subheader("📊 Hasil Perbandingan")
             
-            df_tarikan['_clean_key'] = df_tarikan['NO. PIB'].apply(clean_number)
-            df_upload['_clean_key'] = df_upload['NO. PIB'].apply(clean_number)
+            df_tarikan['_clean_pib'] = df_tarikan[pib_col_tarikan].apply(clean_number)
+            df_upload['_clean_pib'] = df_upload[pib_col_upload].apply(clean_number)
             
-            tarikan_keys = set(df_tarikan['_clean_key'].dropna())
+            tarikan_keys = set(df_tarikan['_clean_pib'].dropna())
             tarikan_keys = {k for k in tarikan_keys if k != ''}
             
-            upload_keys = set(df_upload['_clean_key'].dropna())
+            upload_keys = set(df_upload['_clean_pib'].dropna())
             upload_keys = {k for k in upload_keys if k != ''}
             
             missing_in_upload = tarikan_keys - upload_keys
@@ -151,10 +186,10 @@ if file_tarikan and file_upload:
                 st.markdown("### 🔴 Data Tarikan yang Tidak Ada di File Anda")
                 st.write(f"Ditemukan **{len(missing_in_upload)}** data dari tarikan yang tidak ada di file Anda.")
                 
-                df_missing = df_tarikan[df_tarikan['_clean_key'].isin(missing_in_upload)].copy()
-                df_missing = df_missing.drop(columns=['_clean_key'])
+                df_missing = df_tarikan[df_tarikan['_clean_pib'].isin(missing_in_upload)].copy()
+                df_missing = df_missing.drop(columns=['_clean_pib'])
                 
-                if 'NO. INVOICE' in df_missing.columns and invoice_set:
+                if invoice_col_tarikan and invoice_set:
                     def check_invoice_sync(inv_value):
                         inv_list = get_invoice_list(inv_value)
                         if not inv_list:
@@ -167,22 +202,22 @@ if file_tarikan and file_upload:
                             else:
                                 not_found.append(inv)
                         if len(found) == len(inv_list):
-                            return '✅ Ada Semua'
+                            return '✅ Ada'
                         elif found:
                             return f'⚠️ Sebagian ({len(found)}/{len(inv_list)})'
                         else:
                             return '❌ Tidak Ada'
                     
-                    df_missing['Sinkron Invoice'] = df_missing['NO. INVOICE'].apply(check_invoice_sync)
+                    df_missing['Sinkron Invoice'] = df_missing[invoice_col_tarikan].apply(check_invoice_sync)
                     
-                    ada_semua = df_missing[df_missing['Sinkron Invoice'] == '✅ Ada Semua']
+                    ada_semua = df_missing[df_missing['Sinkron Invoice'] == '✅ Ada']
                     sebagian = df_missing[df_missing['Sinkron Invoice'].str.contains('Sebagian', na=False)]
                     tidak_ada = df_missing[df_missing['Sinkron Invoice'] == '❌ Tidak Ada']
                     
                     st.markdown("#### Status Sinkronisasi Invoice:")
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Invoice Ada Semua", len(ada_semua))
+                        st.metric("Invoice Ada", len(ada_semua))
                     with col2:
                         st.metric("Invoice Sebagian", len(sebagian))
                     with col3:
@@ -193,13 +228,13 @@ if file_tarikan and file_upload:
                 
                 if 'Sinkron Invoice' in df_missing.columns:
                     st.markdown("---")
-                    tab1, tab2, tab3 = st.tabs(["✅ Invoice Ada Semua", "⚠️ Invoice Sebagian", "❌ Invoice Tidak Ada"])
+                    tab1, tab2, tab3 = st.tabs(["✅ Invoice Ada", "⚠️ Invoice Sebagian", "❌ Invoice Tidak Ada"])
                     
                     with tab1:
                         if len(ada_semua) > 0:
                             st.dataframe(ada_semua, use_container_width=True)
                         else:
-                            st.info("Tidak ada data dengan invoice lengkap")
+                            st.info("Tidak ada data dengan invoice yang tersinkron")
                     
                     with tab2:
                         if len(sebagian) > 0:
@@ -226,9 +261,6 @@ if file_tarikan and file_upload:
                 )
             else:
                 st.success("✅ Semua data dari tarikan sudah tersedia di file Anda!")
-            
-            df_tarikan = df_tarikan.drop(columns=['_clean_key'], errors='ignore')
-            df_upload = df_upload.drop(columns=['_clean_key'], errors='ignore')
             
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memproses file: {str(e)}")

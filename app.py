@@ -53,18 +53,21 @@ def clean_number(value):
     return val_str
 
 def get_invoice_list(value):
-    """Memecah invoice yang mengandung ; menjadi list dan membersihkan setiap item"""
+    """Memecah invoice yang mengandung ; atau , menjadi list dan membersihkan setiap item"""
     if pd.isna(value):
         return []
     val_str = str(value).strip()
     val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
     
-    if ';' in val_str:
-        invoices = [inv.strip().strip(';').strip() for inv in val_str.split(';')]
+    # Cek apakah ada separator ; atau ,
+    if ';' in val_str or ',' in val_str:
+        # Ganti semua separator dengan satu jenis lalu split
+        val_str = val_str.replace(';', ',')
+        invoices = [inv.strip().strip(';').strip(',').strip() for inv in val_str.split(',')]
         invoices = [inv for inv in invoices if inv]
         return invoices
     
-    val_str = val_str.strip(';').strip()
+    val_str = val_str.strip(';').strip(',').strip()
     return [val_str] if val_str else []
 
 def find_invoice_column(df):

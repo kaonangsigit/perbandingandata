@@ -147,36 +147,36 @@ if file_tarikan and file_upload:
                     
                     if ski_column in df_missing.columns:
                         df_missing['Status SKI'] = df_missing[ski_column].apply(
-                            lambda x: '✅ Ada SKI' if pd.notna(x) and str(x).strip() != '' else '❌ Belum Ada SKI'
+                            lambda x: '✅ Sudah Ada Ijin' if pd.notna(x) and 'sudah ada ijin' in str(x).lower().strip() else '❌ Belum Ada Ijin'
                         )
                         
-                        ada_ski = df_missing[df_missing['Status SKI'] == '✅ Ada SKI']
-                        belum_ski = df_missing[df_missing['Status SKI'] == '❌ Belum Ada SKI']
+                        ada_ski = df_missing[df_missing['Status SKI'] == '✅ Sudah Ada Ijin']
+                        belum_ski = df_missing[df_missing['Status SKI'] == '❌ Belum Ada Ijin']
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            st.metric("Sudah Ada SKI", len(ada_ski), delta=None)
+                            st.metric("Sudah Ada Ijin", len(ada_ski), delta=None)
                         with col2:
-                            st.metric("Belum Ada SKI", len(belum_ski), delta=None)
+                            st.metric("Belum Ada Ijin", len(belum_ski), delta=None)
                         
                         st.markdown("#### Data Lengkap dengan Status SKI:")
                         st.dataframe(df_missing, use_container_width=True)
                         
                         st.markdown("---")
                         
-                        tab1, tab2 = st.tabs(["✅ Sudah Ada SKI", "❌ Belum Ada SKI"])
+                        tab1, tab2 = st.tabs(["✅ Sudah Ada Ijin", "❌ Belum Ada Ijin"])
                         
                         with tab1:
                             if len(ada_ski) > 0:
                                 st.dataframe(ada_ski, use_container_width=True)
                             else:
-                                st.info("Tidak ada data dengan SKI")
+                                st.info("Tidak ada data yang sudah ada ijin")
                         
                         with tab2:
                             if len(belum_ski) > 0:
                                 st.dataframe(belum_ski, use_container_width=True)
                             else:
-                                st.info("Semua data sudah memiliki SKI")
+                                st.info("Semua data sudah memiliki ijin")
                     else:
                         st.dataframe(df_missing, use_container_width=True)
                     

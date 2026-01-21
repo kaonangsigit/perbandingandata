@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import re
 
 st.set_page_config(page_title="Perbandingan Data Impor", page_icon="📊", layout="wide")
 
@@ -13,7 +14,7 @@ st.markdown("""
 ### Petunjuk Penggunaan:
 1. Upload **File Tarikan** (data hasil tarikan dari sistem)
 2. Upload **File Data Anda** (data yang ingin dibandingkan)
-3. Sistem akan mengidentifikasi data yang belum tersedia di file Anda
+3. Sistem akan mengidentifikasi data tarikan yang belum tersedia di file Anda
 4. Untuk data tersebut, akan dicek apakah sudah ada SKI-nya atau tidak
 """)
 
@@ -28,6 +29,15 @@ with col1:
 with col2:
     st.subheader("📁 File Data Anda")
     file_upload = st.file_uploader("Upload file data Anda untuk dibandingkan", type=['xlsx', 'xls'], key="upload")
+
+def clean_number(value):
+    """Membersihkan nilai dari tanda kutip ' dan " serta karakter non-numerik lainnya"""
+    if pd.isna(value):
+        return ''
+    val_str = str(value).strip()
+    val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
+    val_str = re.sub(r'[^\d]', '', val_str)
+    return val_str
 
 def extract_columns(df, required_cols):
     """Extract only required columns from dataframe, handling column name variations"""
@@ -108,26 +118,32 @@ if file_tarikan and file_upload:
                 st.markdown("---")
                 st.subheader("📊 Hasil Perbandingan")
                 
-                tarikan_keys = set(df_tarikan[key_column].dropna().astype(str))
-                upload_keys = set(df_upload[key_column].dropna().astype(str))
+                df_tarikan['_clean_key'] = df_tarikan[key_column].apply(clean_number)
+                df_upload['_clean_key'] = df_upload[key_column].apply(clean_number)
+                
+                tarikan_keys = set(df_tarikan['_clean_key'].dropna())
+                tarikan_keys = {k for k in tarikan_keys if k != ''}
+                
+                upload_keys = set(df_upload['_clean_key'].dropna())
+                upload_keys = {k for k in upload_keys if k != ''}
                 
                 missing_in_upload = tarikan_keys - upload_keys
-                missing_in_tarikan = upload_keys - tarikan_keys
                 
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     st.metric("Data di Tarikan", len(tarikan_keys))
                 with col2:
-                    st.metric("Data di Upload Anda", len(upload_keys))
+                    st.metric("Data di File Anda", len(upload_keys))
                 with col3:
-                    st.metric("Data Belum Ada di Upload Anda", len(missing_in_upload))
+                    st.metric("Data Tarikan Belum Ada di File Anda", len(missing_in_upload))
                 
                 if missing_in_upload:
-                    st.markdown("### 🔴 Data yang Belum Tersedia di File Anda")
-                    st.write(f"Ditemukan **{len(missing_in_upload)}** data dari sistem yang belum ada di file Anda.")
+                    st.markdown("### 🔴 Data Tarikan yang Belum Tersedia di File Anda")
+                    st.write(f"Ditemukan **{len(missing_in_upload)}** data dari tarikan yang belum ada di file Anda.")
                     
-                    df_missing = df_tarikan[df_tarikan[key_column].astype(str).isin(missing_in_upload)].copy()
+                    df_missing = df_tarikan[df_tarikan['_clean_key'].isin(missing_in_upload)].copy()
+                    df_missing = df_missing.drop(columns=['_clean_key'])
                     
                     if ski_column in df_missing.columns:
                         df_missing['Status SKI'] = df_missing[ski_column].apply(
@@ -176,14 +192,11 @@ if file_tarikan and file_upload:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
-                    st.success("✅ Semua data dari sistem sudah tersedia di file Anda!")
+                    st.success("✅ Semua data dari tarikan sudah tersedia di file Anda!")
                 
-                if missing_in_tarikan:
-                    st.markdown("### 🟡 Data di File Anda yang Tidak Ada di Sistem")
-                    st.write(f"Ditemukan **{len(missing_in_tarikan)}** data di file Anda yang tidak ada di sistem.")
-                    
-                    df_extra = df_upload[df_upload[key_column].astype(str).isin(missing_in_tarikan)]
-                    st.dataframe(df_extra, use_container_width=True)
+                df_tarikan = df_tarikan.drop(columns=['_clean_key'], errors='ignore')
+                df_upload = df_upload.drop(columns=['_clean_key'], errors='ignore')
+                
         else:
             st.error("⚠️ Tidak ditemukan kolom yang sama antara kedua file. Pastikan kedua file memiliki struktur kolom yang serupa.")
             

@@ -12,12 +12,12 @@ st.markdown("""
 ### Petunjuk Penggunaan:
 1. Upload **File Tarikan** (data hasil tarikan dari sistem)
 2. Upload **File Data Anda** (data yang ingin dibandingkan berdasarkan NO. PIB)
-3. Upload **File Invoice Bahan Tambahan Obat** (untuk sinkronisasi NO. INVOICE)
-4. Upload **File Invoice Bahan Kimia** (untuk sinkronisasi NO. INVOICE)
+3. Upload **File Invoice Bahan Tambahan Obat** (untuk cek NO. INVOICE)
+4. Upload **File Invoice Bahan Kimia** (untuk cek NO. INVOICE)
 5. Sistem akan:
    - Mengidentifikasi data tarikan yang belum ada di file Anda (berdasarkan NO. PIB)
-   - Sinkronisasi NO. INVOICE dari hasil perbandingan dengan kedua file Invoice
-   - Membersihkan tanda ; dari NO. INVOICE secara otomatis
+   - Mengecek NO. INVOICE di file Bahan Tambahan Obat
+   - Mengecek NO. INVOICE di file Bahan Kimia
 """)
 
 col1, col2 = st.columns(2)
@@ -50,15 +50,6 @@ def clean_number(value):
     val_str = str(value).strip()
     val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
     val_str = re.sub(r'[^\d]', '', val_str)
-    return val_str
-
-def clean_invoice(value):
-    """Membersihkan nilai invoice dari tanda kutip dan ; di awal/akhir"""
-    if pd.isna(value):
-        return ''
-    val_str = str(value).strip()
-    val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
-    val_str = val_str.strip(';').strip()
     return val_str
 
 def get_invoice_list(value):
@@ -135,7 +126,6 @@ if file_tarikan and file_upload:
         
         invoice_set_obat = set()
         invoice_set_kimia = set()
-        invoice_set_all = set()
         
         st.markdown("---")
         st.subheader("📋 Status File Invoice")
@@ -145,11 +135,6 @@ if file_tarikan and file_upload:
         
         if file_invoice_kimia:
             invoice_set_kimia = load_invoice_set(file_invoice_kimia, "Bahan Kimia")
-        
-        invoice_set_all = invoice_set_obat | invoice_set_kimia
-        
-        if invoice_set_all:
-            st.info(f"Total gabungan: **{len(invoice_set_all)}** NO. INVOICE unik dari kedua file")
         
         st.markdown("---")
         st.subheader("📋 Preview Data")
@@ -174,7 +159,7 @@ if file_tarikan and file_upload:
         
         if st.button("🔍 Bandingkan Data", type="primary"):
             st.markdown("---")
-            st.subheader("📊 Hasil Perbandingan")
+            st.subheader("📊 Hasil Perbandingan NO. PIB")
             
             df_tarikan['_clean_pib'] = df_tarikan[pib_col_tarikan].apply(clean_number)
             df_upload['_clean_pib'] = df_upload[pib_col_upload].apply(clean_number)
@@ -203,93 +188,148 @@ if file_tarikan and file_upload:
                 df_missing = df_tarikan[df_tarikan['_clean_pib'].isin(missing_in_upload)].copy()
                 df_missing = df_missing.drop(columns=['_clean_pib'])
                 
-                if invoice_col_tarikan and invoice_set_all:
-                    def check_invoice_sync(inv_value):
-                        inv_list = get_invoice_list(inv_value)
-                        if not inv_list:
-                            return '❌ Tidak Ada'
-                        found = []
-                        not_found = []
-                        for inv in inv_list:
-                            if inv in invoice_set_all:
-                                found.append(inv)
-                            else:
-                                not_found.append(inv)
-                        if len(found) == len(inv_list):
-                            return '✅ Ada'
-                        elif found:
-                            return f'⚠️ Sebagian ({len(found)}/{len(inv_list)})'
-                        else:
-                            return '❌ Tidak Ada'
-                    
-                    def check_invoice_source(inv_value):
-                        inv_list = get_invoice_list(inv_value)
-                        if not inv_list:
-                            return '-'
-                        sources = []
-                        for inv in inv_list:
-                            if inv in invoice_set_obat and inv in invoice_set_kimia:
-                                sources.append('Keduanya')
-                            elif inv in invoice_set_obat:
-                                sources.append('Obat')
-                            elif inv in invoice_set_kimia:
-                                sources.append('Kimia')
-                        if sources:
-                            return ', '.join(set(sources))
-                        return '-'
-                    
-                    df_missing['Sinkron Invoice'] = df_missing[invoice_col_tarikan].apply(check_invoice_sync)
-                    df_missing['Sumber Invoice'] = df_missing[invoice_col_tarikan].apply(check_invoice_source)
-                    
-                    ada_semua = df_missing[df_missing['Sinkron Invoice'] == '✅ Ada']
-                    sebagian = df_missing[df_missing['Sinkron Invoice'].str.contains('Sebagian', na=False)]
-                    tidak_ada = df_missing[df_missing['Sinkron Invoice'] == '❌ Tidak Ada']
-                    
-                    st.markdown("#### Status Sinkronisasi Invoice:")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Invoice Ada", len(ada_semua))
-                    with col2:
-                        st.metric("Invoice Sebagian", len(sebagian))
-                    with col3:
-                        st.metric("Invoice Tidak Ada", len(tidak_ada))
-                
-                st.markdown("#### Data Lengkap:")
+                st.markdown("#### Data Hasil Perbandingan:")
                 st.dataframe(df_missing, use_container_width=True)
                 
-                if 'Sinkron Invoice' in df_missing.columns:
-                    st.markdown("---")
-                    tab1, tab2, tab3 = st.tabs(["✅ Invoice Ada", "⚠️ Invoice Sebagian", "❌ Invoice Tidak Ada"])
-                    
-                    with tab1:
-                        if len(ada_semua) > 0:
-                            st.dataframe(ada_semua, use_container_width=True)
-                        else:
-                            st.info("Tidak ada data dengan invoice yang tersinkron")
-                    
-                    with tab2:
-                        if len(sebagian) > 0:
-                            st.dataframe(sebagian, use_container_width=True)
-                        else:
-                            st.info("Tidak ada data dengan invoice sebagian")
-                    
-                    with tab3:
-                        if len(tidak_ada) > 0:
-                            st.dataframe(tidak_ada, use_container_width=True)
-                        else:
-                            st.info("Semua invoice sudah tersinkron")
-                
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                output_compare = io.BytesIO()
+                with pd.ExcelWriter(output_compare, engine='openpyxl') as writer:
                     df_missing.to_excel(writer, index=False, sheet_name='Hasil Perbandingan')
-                output.seek(0)
+                output_compare.seek(0)
                 
                 st.download_button(
                     label="📥 Download Hasil Perbandingan",
-                    data=output,
+                    data=output_compare,
                     file_name="hasil_perbandingan.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+                
+                if invoice_col_tarikan and (invoice_set_obat or invoice_set_kimia):
+                    st.markdown("---")
+                    st.subheader("📋 Cek NO. INVOICE")
+                    
+                    def check_invoice_obat(inv_value):
+                        if not invoice_set_obat:
+                            return '-'
+                        inv_list = get_invoice_list(inv_value)
+                        if not inv_list:
+                            return '❌ Tidak Ada'
+                        found = sum(1 for inv in inv_list if inv in invoice_set_obat)
+                        if found == len(inv_list):
+                            return '✅ Ada'
+                        elif found > 0:
+                            return f'⚠️ Sebagian ({found}/{len(inv_list)})'
+                        else:
+                            return '❌ Tidak Ada'
+                    
+                    def check_invoice_kimia(inv_value):
+                        if not invoice_set_kimia:
+                            return '-'
+                        inv_list = get_invoice_list(inv_value)
+                        if not inv_list:
+                            return '❌ Tidak Ada'
+                        found = sum(1 for inv in inv_list if inv in invoice_set_kimia)
+                        if found == len(inv_list):
+                            return '✅ Ada'
+                        elif found > 0:
+                            return f'⚠️ Sebagian ({found}/{len(inv_list)})'
+                        else:
+                            return '❌ Tidak Ada'
+                    
+                    df_invoice_check = df_missing.copy()
+                    
+                    if invoice_set_obat:
+                        st.markdown("#### Cek di Bahan Tambahan Obat:")
+                        df_invoice_check['Cek Bahan Obat'] = df_invoice_check[invoice_col_tarikan].apply(check_invoice_obat)
+                        
+                        ada_obat = df_invoice_check[df_invoice_check['Cek Bahan Obat'] == '✅ Ada']
+                        sebagian_obat = df_invoice_check[df_invoice_check['Cek Bahan Obat'].str.contains('Sebagian', na=False)]
+                        tidak_obat = df_invoice_check[df_invoice_check['Cek Bahan Obat'] == '❌ Tidak Ada']
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Ada di Bahan Obat", len(ada_obat))
+                        with col2:
+                            st.metric("Sebagian di Bahan Obat", len(sebagian_obat))
+                        with col3:
+                            st.metric("Tidak Ada di Bahan Obat", len(tidak_obat))
+                    
+                    if invoice_set_kimia:
+                        st.markdown("#### Cek di Bahan Kimia:")
+                        df_invoice_check['Cek Bahan Kimia'] = df_invoice_check[invoice_col_tarikan].apply(check_invoice_kimia)
+                        
+                        ada_kimia = df_invoice_check[df_invoice_check['Cek Bahan Kimia'] == '✅ Ada']
+                        sebagian_kimia = df_invoice_check[df_invoice_check['Cek Bahan Kimia'].str.contains('Sebagian', na=False)]
+                        tidak_kimia = df_invoice_check[df_invoice_check['Cek Bahan Kimia'] == '❌ Tidak Ada']
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Ada di Bahan Kimia", len(ada_kimia))
+                        with col2:
+                            st.metric("Sebagian di Bahan Kimia", len(sebagian_kimia))
+                        with col3:
+                            st.metric("Tidak Ada di Bahan Kimia", len(tidak_kimia))
+                    
+                    st.markdown("#### Data Lengkap dengan Status Invoice:")
+                    st.dataframe(df_invoice_check, use_container_width=True)
+                    
+                    if invoice_set_obat:
+                        st.markdown("---")
+                        st.markdown("##### Filter Bahan Tambahan Obat:")
+                        tab1, tab2, tab3 = st.tabs(["✅ Ada", "⚠️ Sebagian", "❌ Tidak Ada"])
+                        
+                        with tab1:
+                            if len(ada_obat) > 0:
+                                st.dataframe(ada_obat, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                        
+                        with tab2:
+                            if len(sebagian_obat) > 0:
+                                st.dataframe(sebagian_obat, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                        
+                        with tab3:
+                            if len(tidak_obat) > 0:
+                                st.dataframe(tidak_obat, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                    
+                    if invoice_set_kimia:
+                        st.markdown("---")
+                        st.markdown("##### Filter Bahan Kimia:")
+                        tab1, tab2, tab3 = st.tabs(["✅ Ada ", "⚠️ Sebagian ", "❌ Tidak Ada "])
+                        
+                        with tab1:
+                            if len(ada_kimia) > 0:
+                                st.dataframe(ada_kimia, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                        
+                        with tab2:
+                            if len(sebagian_kimia) > 0:
+                                st.dataframe(sebagian_kimia, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                        
+                        with tab3:
+                            if len(tidak_kimia) > 0:
+                                st.dataframe(tidak_kimia, use_container_width=True)
+                            else:
+                                st.info("Tidak ada data")
+                    
+                    output_invoice = io.BytesIO()
+                    with pd.ExcelWriter(output_invoice, engine='openpyxl') as writer:
+                        df_invoice_check.to_excel(writer, index=False, sheet_name='Hasil Cek Invoice')
+                    output_invoice.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Download Hasil Cek Invoice",
+                        data=output_invoice,
+                        file_name="hasil_cek_invoice.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    
             else:
                 st.success("✅ Semua data dari tarikan sudah tersedia di file Anda!")
             
@@ -298,7 +338,7 @@ if file_tarikan and file_upload:
         st.info("Pastikan file Excel dalam format yang benar (.xlsx atau .xls)")
 
 else:
-    st.info("👆 Silakan upload File Tarikan dan File Data Anda untuk memulai perbandingan. File Invoice bersifat opsional untuk sinkronisasi.")
+    st.info("👆 Silakan upload File Tarikan dan File Data Anda untuk memulai perbandingan. File Invoice bersifat opsional.")
 
 st.markdown("---")
 st.markdown("*Aplikasi Perbandingan Data Realisasi Impor*")

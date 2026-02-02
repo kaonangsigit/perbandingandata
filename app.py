@@ -160,18 +160,19 @@ with tab_main:
     
     with st.expander("📖 Petunjuk Penggunaan", expanded=False):
         st.markdown("""
-        1. Upload **File Tarikan** (data hasil tarikan dari sistem)
+        1. Upload **File Tarikan** (bisa multiple file, akan digabung otomatis)
         2. Upload **File Data Anda** (data yang ingin dibandingkan)
         3. **Pilih kolom** yang ingin digunakan untuk perbandingan
         4. Upload **File Invoice** (opsional) untuk cek NO. INVOICE
         5. Klik **Bandingkan Data**
+        6. Download hasil: Data SAMA = **Kuning**, Data berbeda = **Putih**
         """)
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### 📥 File Tarikan")
-        file_tarikan = st.file_uploader("Data hasil tarikan sistem", type=['xlsx', 'xls'], key="tarikan", help="Upload file Excel dari sistem")
+        st.markdown("#### 📥 File Tarikan (bisa multiple)")
+        files_tarikan = st.file_uploader("Data hasil tarikan sistem", type=['xlsx', 'xls'], key="tarikan", help="Upload file Excel dari sistem (bisa pilih banyak file)", accept_multiple_files=True)
 
     with col2:
         st.markdown("#### 📤 File Data Anda")
@@ -190,9 +191,19 @@ with tab_main:
         st.markdown("#### 🧪 Bahan Kimia")
         file_invoice_kimia = st.file_uploader("File Invoice Bahan Kimia", type=['xlsx', 'xls'], key="invoice_kimia")
 
-    if file_tarikan and file_upload:
+    if files_tarikan and file_upload:
         try:
-            df_tarikan = pd.read_excel(file_tarikan)
+            if len(files_tarikan) == 1:
+                df_tarikan = pd.read_excel(files_tarikan[0])
+                st.success(f"✅ 1 file tarikan dimuat: {len(df_tarikan)} baris")
+            else:
+                dfs = []
+                for f in files_tarikan:
+                    df_temp = pd.read_excel(f)
+                    dfs.append(df_temp)
+                df_tarikan = pd.concat(dfs, ignore_index=True)
+                st.success(f"✅ {len(files_tarikan)} file tarikan digabung: {len(df_tarikan)} baris total")
+            
             df_upload = pd.read_excel(file_upload)
             
             st.markdown("---")
@@ -335,9 +346,11 @@ with tab_main:
                 
                 st.markdown("---")
                 st.markdown("### 📊 Download Data Lengkap dengan Warna")
-                st.markdown("File Excel akan memiliki:")
+                st.markdown("File Excel akan memiliki **2 sheet**:")
+                st.markdown("- 📥 **Sheet 1 - Data Tarikan**: Semua data tarikan dengan warna")
+                st.markdown("- 📤 **Sheet 2 - Data Anda**: Semua data Anda dengan warna")
                 st.markdown("- 🟡 **Warna Kuning**: Data yang **SAMA** di kedua file")
-                st.markdown("- ⬜ **Tanpa Warna (Putih)**: Data yang **TIDAK SAMA** / tidak ada di file lain")
+                st.markdown("- ⬜ **Putih**: Data yang **TIDAK ADA** di file lain")
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -345,13 +358,18 @@ with tab_main:
                 with col2:
                     st.metric("⬜ Data Putih (Tidak Sama)", jumlah_tidak_sama)
                 
+                df_upload_display = df_upload.copy()
+                df_upload_display['Status'] = df_upload_display['_clean_key'].apply(
+                    lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
+                )
+                df_upload_display = df_upload_display.drop(columns=['_clean_key'])
+                
                 output_colored = io.BytesIO()
                 with pd.ExcelWriter(output_colored, engine='openpyxl') as writer:
-                    df_tarikan_display.to_excel(writer, index=False, sheet_name='Hasil Perbandingan')
+                    df_tarikan_display.to_excel(writer, index=False, sheet_name='Data Tarikan')
+                    df_upload_display.to_excel(writer, index=False, sheet_name='Data Anda')
                     
                     workbook = writer.book
-                    worksheet = writer.sheets['Hasil Perbandingan']
-                    
                     yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
                     header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
                     header_font = Font(bold=True, color='FFFFFF')
@@ -362,36 +380,40 @@ with tab_main:
                         bottom=Side(style='thin')
                     )
                     
-                    for col_idx, col in enumerate(df_tarikan_display.columns, 1):
-                        cell = worksheet.cell(row=1, column=col_idx)
-                        cell.fill = header_fill
-                        cell.font = header_font
-                        cell.alignment = Alignment(horizontal='center')
-                        cell.border = thin_border
+                    for sheet_name, df_display in [('Data Tarikan', df_tarikan_display), ('Data Anda', df_upload_display)]:
+                        worksheet = writer.sheets[sheet_name]
+                        
+                        for col_idx, col in enumerate(df_display.columns, 1):
+                            cell = worksheet.cell(row=1, column=col_idx)
+                            cell.fill = header_fill
+                            cell.font = header_font
+                            cell.alignment = Alignment(horizontal='center')
+                            cell.border = thin_border
+                        
+                        status_col_idx = df_display.columns.get_loc('Status') + 1
+                        
+                        for row_idx in range(2, len(df_display) + 2):
+                            status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
+                            if '✅' in str(status_cell.value):
+                                for col_idx in range(1, len(df_display.columns) + 1):
+                                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                                    cell.fill = yellow_fill
+                                    cell.border = thin_border
+                            else:
+                                for col_idx in range(1, len(df_display.columns) + 1):
+                                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                                    cell.border = thin_border
+                        
+                        for col_idx, col in enumerate(df_display.columns, 1):
+                            max_length = max(
+                                df_display[col].astype(str).apply(len).max(),
+                                len(str(col))
+                            ) + 2
+                            worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_length, 50)
                     
-                    status_col_idx = df_tarikan_display.columns.get_loc('Status') + 1
-                    
-                    for row_idx in range(2, len(df_tarikan_display) + 2):
-                        status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
-                        if '✅' in str(status_cell.value):
-                            for col_idx in range(1, len(df_tarikan_display.columns) + 1):
-                                cell = worksheet.cell(row=row_idx, column=col_idx)
-                                cell.fill = yellow_fill
-                                cell.border = thin_border
-                        else:
-                            for col_idx in range(1, len(df_tarikan_display.columns) + 1):
-                                cell = worksheet.cell(row=row_idx, column=col_idx)
-                                cell.border = thin_border
-                    
-                    for col_idx, col in enumerate(df_tarikan_display.columns, 1):
-                        max_length = max(
-                            df_tarikan_display[col].astype(str).apply(len).max(),
-                            len(str(col))
-                        ) + 2
-                        worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_length, 50)
-                    
+                    worksheet = writer.sheets['Data Tarikan']
                     summary_row = len(df_tarikan_display) + 4
-                    worksheet.cell(row=summary_row, column=1, value='RINGKASAN:')
+                    worksheet.cell(row=summary_row, column=1, value='RINGKASAN DATA TARIKAN:')
                     worksheet.cell(row=summary_row, column=1).font = Font(bold=True)
                     worksheet.cell(row=summary_row + 1, column=1, value='Data Kuning (Sama di kedua file):')
                     worksheet.cell(row=summary_row + 1, column=2, value=jumlah_sama)
@@ -399,9 +421,25 @@ with tab_main:
                     worksheet.cell(row=summary_row + 1, column=2).fill = yellow_fill
                     worksheet.cell(row=summary_row + 2, column=1, value='Data Putih (Tidak sama / tidak ada):')
                     worksheet.cell(row=summary_row + 2, column=2, value=jumlah_tidak_sama)
-                    worksheet.cell(row=summary_row + 3, column=1, value='Total Data:')
+                    worksheet.cell(row=summary_row + 3, column=1, value='Total Data Tarikan:')
                     worksheet.cell(row=summary_row + 3, column=2, value=len(df_tarikan_display))
                     worksheet.cell(row=summary_row + 3, column=1).font = Font(bold=True)
+                    
+                    worksheet2 = writer.sheets['Data Anda']
+                    jumlah_sama_upload = len(df_upload_display[df_upload_display['Status'] == '✅ Sama'])
+                    jumlah_tidak_sama_upload = len(df_upload_display[df_upload_display['Status'] == '❌ Tidak Sama'])
+                    summary_row2 = len(df_upload_display) + 4
+                    worksheet2.cell(row=summary_row2, column=1, value='RINGKASAN DATA ANDA:')
+                    worksheet2.cell(row=summary_row2, column=1).font = Font(bold=True)
+                    worksheet2.cell(row=summary_row2 + 1, column=1, value='Data Kuning (Sama di kedua file):')
+                    worksheet2.cell(row=summary_row2 + 1, column=2, value=jumlah_sama_upload)
+                    worksheet2.cell(row=summary_row2 + 1, column=1).fill = yellow_fill
+                    worksheet2.cell(row=summary_row2 + 1, column=2).fill = yellow_fill
+                    worksheet2.cell(row=summary_row2 + 2, column=1, value='Data Putih (Tidak sama / tidak ada):')
+                    worksheet2.cell(row=summary_row2 + 2, column=2, value=jumlah_tidak_sama_upload)
+                    worksheet2.cell(row=summary_row2 + 3, column=1, value='Total Data Anda:')
+                    worksheet2.cell(row=summary_row2 + 3, column=2, value=len(df_upload_display))
+                    worksheet2.cell(row=summary_row2 + 3, column=1).font = Font(bold=True)
                     
                 output_colored.seek(0)
                 

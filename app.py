@@ -152,7 +152,7 @@ def load_invoice_set(file_invoice, label):
 
 def is_numeric_column(col_name):
     col_lower = str(col_name).lower()
-    numeric_keywords = ['no', 'pib', 'invoice', 'nomor', 'kode', 'id', 'number']
+    numeric_keywords = ['pib', 'pengajuan']
     return any(keyword in col_lower for keyword in numeric_keywords)
 
 with tab_main:
@@ -223,9 +223,9 @@ with tab_main:
                 )
             
             use_numeric_cleaning = st.checkbox(
-                "🔢 Bersihkan data numerik (hapus karakter non-angka)",
+                "🔢 Bersihkan numerik saja (HANYA untuk kolom angka murni seperti NO. PIB)",
                 value=is_numeric_column(selected_col_tarikan),
-                help="Centang jika kolom berisi nomor seperti NO. PIB, NO. INVOICE, dll"
+                help="⚠️ JANGAN centang jika data mengandung huruf seperti ST.03.04.35.352A..."
             )
             
             if common_cols:

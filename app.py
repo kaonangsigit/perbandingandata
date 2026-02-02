@@ -86,6 +86,19 @@ def clean_value(value):
         return ''
     val_str = str(value).strip()
     val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
+    
+    date_patterns = [
+        r'\s*/\s*\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+\d{4}',
+        r'\s*/\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}',
+        r'\s*/\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}',
+        r'\s*-\s*\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+\d{4}',
+    ]
+    
+    for pattern in date_patterns:
+        val_str = re.sub(pattern, '', val_str, flags=re.IGNORECASE)
+    
+    val_str = re.sub(r'\s+', ' ', val_str)
+    
     return val_str.strip()
 
 def clean_number(value):

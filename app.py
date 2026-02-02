@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import re
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 st.set_page_config(
     page_title="Perbandingan Data Impor", 
@@ -287,6 +288,15 @@ with tab_main:
                 with col3:
                     st.metric("❌ Tidak Ada di File Anda", len(missing_in_upload), delta=f"-{len(missing_in_upload)}" if missing_in_upload else None, delta_color="inverse")
                 
+                df_tarikan_display = df_tarikan.copy()
+                df_tarikan_display['Status'] = df_tarikan_display['_clean_key'].apply(
+                    lambda x: '❌ Tidak Ada' if x in missing_in_upload else '✅ Ada'
+                )
+                df_tarikan_display = df_tarikan_display.drop(columns=['_clean_key'])
+                
+                jumlah_tidak_ada = len(df_tarikan_display[df_tarikan_display['Status'] == '❌ Tidak Ada'])
+                jumlah_ada = len(df_tarikan_display[df_tarikan_display['Status'] == '✅ Ada'])
+                
                 if missing_in_upload:
                     st.markdown(f"### 🔴 Data Tarikan yang Tidak Ada di File Anda")
                     st.warning(f"Ditemukan **{len(missing_in_upload)}** data unik dari tarikan yang tidak ada di file Anda.")
@@ -295,19 +305,88 @@ with tab_main:
                     df_missing = df_missing.drop(columns=['_clean_key'])
                     
                     st.dataframe(df_missing, use_container_width=True, height=300)
+                
+                st.markdown("---")
+                st.markdown("### 📊 Download Data Lengkap dengan Warna")
+                st.markdown("File Excel akan memiliki:")
+                st.markdown("- 🟡 **Warna Kuning**: Data yang **tidak ada** di file Anda")
+                st.markdown("- ⬜ **Tanpa Warna**: Data yang **sudah ada** di file Anda")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("🟡 Data Kuning (Tidak Ada)", jumlah_tidak_ada)
+                with col2:
+                    st.metric("⬜ Data Putih (Ada)", jumlah_ada)
+                
+                output_colored = io.BytesIO()
+                with pd.ExcelWriter(output_colored, engine='openpyxl') as writer:
+                    df_tarikan_display.to_excel(writer, index=False, sheet_name='Hasil Perbandingan')
                     
-                    output_compare = io.BytesIO()
-                    with pd.ExcelWriter(output_compare, engine='openpyxl') as writer:
-                        df_missing.to_excel(writer, index=False, sheet_name='Hasil Perbandingan')
-                    output_compare.seek(0)
+                    workbook = writer.book
+                    worksheet = writer.sheets['Hasil Perbandingan']
                     
-                    st.download_button(
-                        label="📥 Download Hasil Perbandingan",
-                        data=output_compare,
-                        file_name="hasil_perbandingan.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
+                    yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                    header_font = Font(bold=True, color='FFFFFF')
+                    thin_border = Border(
+                        left=Side(style='thin'),
+                        right=Side(style='thin'),
+                        top=Side(style='thin'),
+                        bottom=Side(style='thin')
                     )
+                    
+                    for col_idx, col in enumerate(df_tarikan_display.columns, 1):
+                        cell = worksheet.cell(row=1, column=col_idx)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal='center')
+                        cell.border = thin_border
+                    
+                    status_col_idx = df_tarikan_display.columns.get_loc('Status') + 1
+                    
+                    for row_idx in range(2, len(df_tarikan_display) + 2):
+                        status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
+                        if '❌' in str(status_cell.value):
+                            for col_idx in range(1, len(df_tarikan_display.columns) + 1):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.fill = yellow_fill
+                                cell.border = thin_border
+                        else:
+                            for col_idx in range(1, len(df_tarikan_display.columns) + 1):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.border = thin_border
+                    
+                    for col_idx, col in enumerate(df_tarikan_display.columns, 1):
+                        max_length = max(
+                            df_tarikan_display[col].astype(str).apply(len).max(),
+                            len(str(col))
+                        ) + 2
+                        worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_length, 50)
+                    
+                    summary_row = len(df_tarikan_display) + 4
+                    worksheet.cell(row=summary_row, column=1, value='RINGKASAN:')
+                    worksheet.cell(row=summary_row, column=1).font = Font(bold=True)
+                    worksheet.cell(row=summary_row + 1, column=1, value='Data Kuning (Tidak Ada):')
+                    worksheet.cell(row=summary_row + 1, column=2, value=jumlah_tidak_ada)
+                    worksheet.cell(row=summary_row + 1, column=1).fill = yellow_fill
+                    worksheet.cell(row=summary_row + 1, column=2).fill = yellow_fill
+                    worksheet.cell(row=summary_row + 2, column=1, value='Data Putih (Ada):')
+                    worksheet.cell(row=summary_row + 2, column=2, value=jumlah_ada)
+                    worksheet.cell(row=summary_row + 3, column=1, value='Total Data:')
+                    worksheet.cell(row=summary_row + 3, column=2, value=len(df_tarikan_display))
+                    worksheet.cell(row=summary_row + 3, column=1).font = Font(bold=True)
+                    
+                output_colored.seek(0)
+                
+                st.download_button(
+                    label="📥 Download Excel dengan Warna",
+                    data=output_colored,
+                    file_name="hasil_perbandingan_berwarna.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+                
+                if missing_in_upload:
                     
                     if invoice_col_tarikan and (invoice_set_obat or invoice_set_kimia):
                         st.markdown("---")

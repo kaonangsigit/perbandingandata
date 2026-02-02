@@ -288,14 +288,16 @@ with tab_main:
                 with col3:
                     st.metric("❌ Tidak Ada di File Anda", len(missing_in_upload), delta=f"-{len(missing_in_upload)}" if missing_in_upload else None, delta_color="inverse")
                 
+                matching_keys = tarikan_keys & upload_keys
+                
                 df_tarikan_display = df_tarikan.copy()
                 df_tarikan_display['Status'] = df_tarikan_display['_clean_key'].apply(
-                    lambda x: '❌ Tidak Ada' if x in missing_in_upload else '✅ Ada'
+                    lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
                 )
                 df_tarikan_display = df_tarikan_display.drop(columns=['_clean_key'])
                 
-                jumlah_tidak_ada = len(df_tarikan_display[df_tarikan_display['Status'] == '❌ Tidak Ada'])
-                jumlah_ada = len(df_tarikan_display[df_tarikan_display['Status'] == '✅ Ada'])
+                jumlah_sama = len(df_tarikan_display[df_tarikan_display['Status'] == '✅ Sama'])
+                jumlah_tidak_sama = len(df_tarikan_display[df_tarikan_display['Status'] == '❌ Tidak Sama'])
                 
                 if missing_in_upload:
                     st.markdown(f"### 🔴 Data Tarikan yang Tidak Ada di File Anda")
@@ -309,14 +311,14 @@ with tab_main:
                 st.markdown("---")
                 st.markdown("### 📊 Download Data Lengkap dengan Warna")
                 st.markdown("File Excel akan memiliki:")
-                st.markdown("- 🟡 **Warna Kuning**: Data yang **tidak ada** di file Anda")
-                st.markdown("- ⬜ **Tanpa Warna**: Data yang **sudah ada** di file Anda")
+                st.markdown("- 🟡 **Warna Kuning**: Data yang **SAMA** di kedua file")
+                st.markdown("- ⬜ **Tanpa Warna (Putih)**: Data yang **TIDAK SAMA** / tidak ada di file lain")
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("🟡 Data Kuning (Tidak Ada)", jumlah_tidak_ada)
+                    st.metric("🟡 Data Kuning (Sama)", jumlah_sama)
                 with col2:
-                    st.metric("⬜ Data Putih (Ada)", jumlah_ada)
+                    st.metric("⬜ Data Putih (Tidak Sama)", jumlah_tidak_sama)
                 
                 output_colored = io.BytesIO()
                 with pd.ExcelWriter(output_colored, engine='openpyxl') as writer:
@@ -346,7 +348,7 @@ with tab_main:
                     
                     for row_idx in range(2, len(df_tarikan_display) + 2):
                         status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
-                        if '❌' in str(status_cell.value):
+                        if '✅' in str(status_cell.value):
                             for col_idx in range(1, len(df_tarikan_display.columns) + 1):
                                 cell = worksheet.cell(row=row_idx, column=col_idx)
                                 cell.fill = yellow_fill
@@ -366,12 +368,12 @@ with tab_main:
                     summary_row = len(df_tarikan_display) + 4
                     worksheet.cell(row=summary_row, column=1, value='RINGKASAN:')
                     worksheet.cell(row=summary_row, column=1).font = Font(bold=True)
-                    worksheet.cell(row=summary_row + 1, column=1, value='Data Kuning (Tidak Ada):')
-                    worksheet.cell(row=summary_row + 1, column=2, value=jumlah_tidak_ada)
+                    worksheet.cell(row=summary_row + 1, column=1, value='Data Kuning (Sama di kedua file):')
+                    worksheet.cell(row=summary_row + 1, column=2, value=jumlah_sama)
                     worksheet.cell(row=summary_row + 1, column=1).fill = yellow_fill
                     worksheet.cell(row=summary_row + 1, column=2).fill = yellow_fill
-                    worksheet.cell(row=summary_row + 2, column=1, value='Data Putih (Ada):')
-                    worksheet.cell(row=summary_row + 2, column=2, value=jumlah_ada)
+                    worksheet.cell(row=summary_row + 2, column=1, value='Data Putih (Tidak sama / tidak ada):')
+                    worksheet.cell(row=summary_row + 2, column=2, value=jumlah_tidak_sama)
                     worksheet.cell(row=summary_row + 3, column=1, value='Total Data:')
                     worksheet.cell(row=summary_row + 3, column=2, value=len(df_tarikan_display))
                     worksheet.cell(row=summary_row + 3, column=1).font = Font(bold=True)

@@ -284,24 +284,36 @@ with tab_main:
                     df_tarikan['_clean_key'] = df_tarikan[selected_col_tarikan].apply(clean_value)
                     df_upload['_clean_key'] = df_upload[selected_col_upload].apply(clean_value)
                 
+                with st.expander("🔎 Preview Hasil Pembersihan Data (klik untuk lihat)", expanded=False):
+                    st.markdown("**File Tarikan - Sample Data Sebelum & Sesudah Pembersihan:**")
+                    preview_tarikan = df_tarikan[[selected_col_tarikan, '_clean_key']].head(5).copy()
+                    preview_tarikan.columns = ['Data Asli', 'Setelah Dibersihkan']
+                    st.dataframe(preview_tarikan, use_container_width=True)
+                    
+                    st.markdown("**File Anda - Sample Data Sebelum & Sesudah Pembersihan:**")
+                    preview_upload = df_upload[[selected_col_upload, '_clean_key']].head(5).copy()
+                    preview_upload.columns = ['Data Asli', 'Setelah Dibersihkan']
+                    st.dataframe(preview_upload, use_container_width=True)
+                
                 tarikan_keys = set(df_tarikan['_clean_key'].dropna())
                 tarikan_keys = {k for k in tarikan_keys if k != ''}
                 
                 upload_keys = set(df_upload['_clean_key'].dropna())
                 upload_keys = {k for k in upload_keys if k != ''}
                 
+                matching_keys = tarikan_keys & upload_keys
                 missing_in_upload = tarikan_keys - upload_keys
                 
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.metric("📥 Data di Tarikan", len(tarikan_keys), help="Jumlah data unik di file tarikan")
+                    st.metric("📥 Data Tarikan", len(tarikan_keys), help="Jumlah data unik di file tarikan")
                 with col2:
-                    st.metric("📤 Data di File Anda", len(upload_keys), help="Jumlah data unik di file Anda")
+                    st.metric("📤 Data Anda", len(upload_keys), help="Jumlah data unik di file Anda")
                 with col3:
-                    st.metric("❌ Tidak Ada di File Anda", len(missing_in_upload), delta=f"-{len(missing_in_upload)}" if missing_in_upload else None, delta_color="inverse")
-                
-                matching_keys = tarikan_keys & upload_keys
+                    st.metric("✅ Data SAMA", len(matching_keys), delta=f"+{len(matching_keys)}" if matching_keys else None, delta_color="normal", help="Data yang ada di KEDUA file")
+                with col4:
+                    st.metric("❌ Tidak Ada", len(missing_in_upload), delta=f"-{len(missing_in_upload)}" if missing_in_upload else None, delta_color="inverse", help="Data tarikan yang tidak ada di file Anda")
                 
                 df_tarikan_display = df_tarikan.copy()
                 df_tarikan_display['Status'] = df_tarikan_display['_clean_key'].apply(

@@ -239,6 +239,18 @@ with tab_main:
                 help="⚠️ JANGAN centang jika data mengandung huruf seperti ST.03.04.35.352A..."
             )
             
+            st.markdown("---")
+            st.markdown("### 📋 Pilihan Output")
+            output_option = st.radio(
+                "Pilih jenis output yang diinginkan:",
+                options=[
+                    "📊 Tampilkan SEMUA data (highlight kuning untuk yang SAMA)",
+                    "❌ Hanya tampilkan data yang TIDAK ADA di file lain"
+                ],
+                index=0,
+                help="Pilih apakah ingin menampilkan semua data atau hanya data yang tidak cocok"
+            )
+            
             if common_cols:
                 st.info(f"💡 Kolom yang sama di kedua file: **{', '.join(common_cols)}**")
             

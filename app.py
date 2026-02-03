@@ -85,9 +85,9 @@ def clean_value(value):
     if pd.isna(value):
         return ''
     val_str = str(value).strip()
-    val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
     
-    val_str = val_str.strip(';').strip(',').strip()
+    val_str = val_str.replace("'", "").replace('"', "").replace("'", "").replace("'", "")
+    val_str = val_str.replace(";", "").replace(",", "")
     
     date_patterns = [
         r'\s*/\s*\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+\d{4}',
@@ -100,8 +100,6 @@ def clean_value(value):
         val_str = re.sub(pattern, '', val_str, flags=re.IGNORECASE)
     
     val_str = re.sub(r'\s+', ' ', val_str)
-    
-    val_str = val_str.strip(';').strip(',').strip()
     
     return val_str.strip()
 

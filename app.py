@@ -240,15 +240,15 @@ with tab_main:
             )
             
             st.markdown("---")
-            st.markdown("### 📋 Pilihan Output")
+            st.markdown("### 📋 Pilihan Jenis Output Download")
             output_option = st.radio(
                 "Pilih jenis output yang diinginkan:",
                 options=[
-                    "📊 Tampilkan SEMUA data (highlight kuning untuk yang SAMA)",
-                    "❌ Hanya tampilkan data yang TIDAK ADA di file lain"
+                    "❌ Download HANYA data yang TIDAK ADA di file lain (Output Lama)",
+                    "📊 Download SEMUA data dengan highlight kuning untuk yang SAMA (Output Baru)"
                 ],
                 index=0,
-                help="Pilih apakah ingin menampilkan semua data atau hanya data yang tidak cocok"
+                help="Pilih jenis output: Output Lama = hanya data tidak cocok, Output Baru = semua data dengan warna"
             )
             
             if common_cols:
@@ -357,113 +357,181 @@ with tab_main:
                     st.dataframe(df_missing, use_container_width=True, height=300)
                 
                 st.markdown("---")
-                st.markdown("### 📊 Download Data Lengkap dengan Warna")
-                st.markdown(f"File Excel akan memiliki **{len(tarikan_files_data) + 1} sheet/laman**:")
-                for i, file_data in enumerate(tarikan_files_data, 1):
-                    st.markdown(f"- 📥 **Sheet {i}**: {file_data['name']}")
-                st.markdown(f"- 📤 **Sheet Terakhir**: Data Anda")
-                st.markdown("- 🟡 **Warna Kuning**: Data yang **SAMA** di kedua file")
-                st.markdown("- ⬜ **Putih**: Data yang **TIDAK ADA** di file lain")
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("🟡 Data Kuning (Sama)", jumlah_sama)
-                with col2:
-                    st.metric("⬜ Data Putih (Tidak Sama)", jumlah_tidak_sama)
+                show_only_missing = "HANYA" in output_option
                 
-                df_upload_display = df_upload.copy()
-                df_upload_display['Status'] = df_upload_display['_clean_key'].apply(
-                    lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
-                )
-                df_upload_display = df_upload_display.drop(columns=['_clean_key'])
-                
-                output_colored = io.BytesIO()
-                with pd.ExcelWriter(output_colored, engine='openpyxl') as writer:
-                    yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-                    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
-                    header_font = Font(bold=True, color='FFFFFF')
-                    thin_border = Border(
-                        left=Side(style='thin'),
-                        right=Side(style='thin'),
-                        top=Side(style='thin'),
-                        bottom=Side(style='thin')
-                    )
+                if show_only_missing:
+                    st.markdown("### 📥 Download Data yang TIDAK ADA (Output Lama)")
+                    st.markdown("File Excel berisi **hanya data yang tidak ada** di file lain")
                     
-                    for file_data in tarikan_files_data:
-                        df_file = file_data['df'].copy()
-                        if use_numeric_cleaning:
-                            df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_number)
-                        else:
-                            df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_value)
-                        df_file['Status'] = df_file['_clean_key'].apply(
-                            lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
+                    if missing_in_upload:
+                        df_missing = df_tarikan[df_tarikan['_clean_key'].isin(missing_in_upload)].copy()
+                        df_missing = df_missing.drop(columns=['_clean_key'])
+                        
+                        output_missing = io.BytesIO()
+                        with pd.ExcelWriter(output_missing, engine='openpyxl') as writer:
+                            header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                            header_font = Font(bold=True, color='FFFFFF')
+                            thin_border = Border(
+                                left=Side(style='thin'),
+                                right=Side(style='thin'),
+                                top=Side(style='thin'),
+                                bottom=Side(style='thin')
+                            )
+                            
+                            for file_data in tarikan_files_data:
+                                df_file = file_data['df'].copy()
+                                if use_numeric_cleaning:
+                                    df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_number)
+                                else:
+                                    df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_value)
+                                
+                                df_file_missing = df_file[df_file['_clean_key'].isin(missing_in_upload)].copy()
+                                df_file_missing = df_file_missing.drop(columns=['_clean_key'])
+                                
+                                if len(df_file_missing) > 0:
+                                    sheet_name = file_data['name'][:31]
+                                    df_file_missing.to_excel(writer, index=False, sheet_name=sheet_name)
+                                    
+                                    worksheet = writer.sheets[sheet_name]
+                                    for col_idx, col in enumerate(df_file_missing.columns, 1):
+                                        cell = worksheet.cell(row=1, column=col_idx)
+                                        cell.fill = header_fill
+                                        cell.font = header_font
+                                        cell.alignment = Alignment(horizontal='center')
+                                        cell.border = thin_border
+                                    
+                                    for row_idx in range(2, len(df_file_missing) + 2):
+                                        for col_idx in range(1, len(df_file_missing.columns) + 1):
+                                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                                            cell.border = thin_border
+                                    
+                                    for col_idx, col in enumerate(df_file_missing.columns, 1):
+                                        max_len = max(df_file_missing[col].astype(str).apply(len).max(), len(str(col))) + 2
+                                        worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_len, 50)
+                        
+                        output_missing.seek(0)
+                        
+                        st.metric("❌ Total Data Tidak Ada", len(missing_in_upload))
+                        
+                        st.download_button(
+                            label="📥 Download Data yang Tidak Ada",
+                            data=output_missing,
+                            file_name="data_tidak_ada.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
                         )
-                        df_file = df_file.drop(columns=['_clean_key'])
+                    else:
+                        st.success("✅ Semua data tarikan sudah ada di file Anda!")
+                
+                else:
+                    st.markdown("### 📊 Download Data Lengkap dengan Warna (Output Baru)")
+                    st.markdown(f"File Excel akan memiliki **{len(tarikan_files_data) + 1} sheet/laman**:")
+                    for i, file_data in enumerate(tarikan_files_data, 1):
+                        st.markdown(f"- 📥 **Sheet {i}**: {file_data['name']}")
+                    st.markdown(f"- 📤 **Sheet Terakhir**: Data Anda")
+                    st.markdown("- 🟡 **Warna Kuning**: Data yang **SAMA** di kedua file")
+                    st.markdown("- ⬜ **Putih**: Data yang **TIDAK ADA** di file lain")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("🟡 Data Kuning (Sama)", jumlah_sama)
+                    with col2:
+                        st.metric("⬜ Data Putih (Tidak Sama)", jumlah_tidak_sama)
+                    
+                    df_upload_display = df_upload.copy()
+                    df_upload_display['Status'] = df_upload_display['_clean_key'].apply(
+                        lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
+                    )
+                    df_upload_display = df_upload_display.drop(columns=['_clean_key'])
+                    
+                    output_colored = io.BytesIO()
+                    with pd.ExcelWriter(output_colored, engine='openpyxl') as writer:
+                        yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                        header_font = Font(bold=True, color='FFFFFF')
+                        thin_border = Border(
+                            left=Side(style='thin'),
+                            right=Side(style='thin'),
+                            top=Side(style='thin'),
+                            bottom=Side(style='thin')
+                        )
                         
-                        sheet_name = file_data['name'][:31]
-                        df_file.to_excel(writer, index=False, sheet_name=sheet_name)
+                        for file_data in tarikan_files_data:
+                            df_file = file_data['df'].copy()
+                            if use_numeric_cleaning:
+                                df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_number)
+                            else:
+                                df_file['_clean_key'] = df_file[selected_col_tarikan].apply(clean_value)
+                            df_file['Status'] = df_file['_clean_key'].apply(
+                                lambda x: '✅ Sama' if x in matching_keys else '❌ Tidak Sama'
+                            )
+                            df_file = df_file.drop(columns=['_clean_key'])
+                            
+                            sheet_name = file_data['name'][:31]
+                            df_file.to_excel(writer, index=False, sheet_name=sheet_name)
+                            
+                            worksheet = writer.sheets[sheet_name]
+                            for col_idx, col in enumerate(df_file.columns, 1):
+                                cell = worksheet.cell(row=1, column=col_idx)
+                                cell.fill = header_fill
+                                cell.font = header_font
+                                cell.alignment = Alignment(horizontal='center')
+                                cell.border = thin_border
+                            
+                            status_col_idx = df_file.columns.get_loc('Status') + 1
+                            for row_idx in range(2, len(df_file) + 2):
+                                status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
+                                if '✅' in str(status_cell.value):
+                                    for col_idx in range(1, len(df_file.columns) + 1):
+                                        cell = worksheet.cell(row=row_idx, column=col_idx)
+                                        cell.fill = yellow_fill
+                                        cell.border = thin_border
+                                else:
+                                    for col_idx in range(1, len(df_file.columns) + 1):
+                                        cell = worksheet.cell(row=row_idx, column=col_idx)
+                                        cell.border = thin_border
+                            
+                            for col_idx, col in enumerate(df_file.columns, 1):
+                                max_len = max(df_file[col].astype(str).apply(len).max(), len(str(col))) + 2
+                                worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_len, 50)
                         
-                        worksheet = writer.sheets[sheet_name]
-                        for col_idx, col in enumerate(df_file.columns, 1):
-                            cell = worksheet.cell(row=1, column=col_idx)
+                        df_upload_display.to_excel(writer, index=False, sheet_name='Data Anda')
+                        worksheet_upload = writer.sheets['Data Anda']
+                        
+                        for col_idx, col in enumerate(df_upload_display.columns, 1):
+                            cell = worksheet_upload.cell(row=1, column=col_idx)
                             cell.fill = header_fill
                             cell.font = header_font
                             cell.alignment = Alignment(horizontal='center')
                             cell.border = thin_border
                         
-                        status_col_idx = df_file.columns.get_loc('Status') + 1
-                        for row_idx in range(2, len(df_file) + 2):
-                            status_cell = worksheet.cell(row=row_idx, column=status_col_idx)
+                        status_col_idx = df_upload_display.columns.get_loc('Status') + 1
+                        for row_idx in range(2, len(df_upload_display) + 2):
+                            status_cell = worksheet_upload.cell(row=row_idx, column=status_col_idx)
                             if '✅' in str(status_cell.value):
-                                for col_idx in range(1, len(df_file.columns) + 1):
-                                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                                for col_idx in range(1, len(df_upload_display.columns) + 1):
+                                    cell = worksheet_upload.cell(row=row_idx, column=col_idx)
                                     cell.fill = yellow_fill
                                     cell.border = thin_border
                             else:
-                                for col_idx in range(1, len(df_file.columns) + 1):
-                                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                                for col_idx in range(1, len(df_upload_display.columns) + 1):
+                                    cell = worksheet_upload.cell(row=row_idx, column=col_idx)
                                     cell.border = thin_border
                         
-                        for col_idx, col in enumerate(df_file.columns, 1):
-                            max_len = max(df_file[col].astype(str).apply(len).max(), len(str(col))) + 2
-                            worksheet.column_dimensions[worksheet.cell(row=1, column=col_idx).column_letter].width = min(max_len, 50)
+                        for col_idx, col in enumerate(df_upload_display.columns, 1):
+                            max_len = max(df_upload_display[col].astype(str).apply(len).max(), len(str(col))) + 2
+                            worksheet_upload.column_dimensions[worksheet_upload.cell(row=1, column=col_idx).column_letter].width = min(max_len, 50)
+                        
+                    output_colored.seek(0)
                     
-                    df_upload_display.to_excel(writer, index=False, sheet_name='Data Anda')
-                    worksheet_upload = writer.sheets['Data Anda']
-                    
-                    for col_idx, col in enumerate(df_upload_display.columns, 1):
-                        cell = worksheet_upload.cell(row=1, column=col_idx)
-                        cell.fill = header_fill
-                        cell.font = header_font
-                        cell.alignment = Alignment(horizontal='center')
-                        cell.border = thin_border
-                    
-                    status_col_idx = df_upload_display.columns.get_loc('Status') + 1
-                    for row_idx in range(2, len(df_upload_display) + 2):
-                        status_cell = worksheet_upload.cell(row=row_idx, column=status_col_idx)
-                        if '✅' in str(status_cell.value):
-                            for col_idx in range(1, len(df_upload_display.columns) + 1):
-                                cell = worksheet_upload.cell(row=row_idx, column=col_idx)
-                                cell.fill = yellow_fill
-                                cell.border = thin_border
-                        else:
-                            for col_idx in range(1, len(df_upload_display.columns) + 1):
-                                cell = worksheet_upload.cell(row=row_idx, column=col_idx)
-                                cell.border = thin_border
-                    
-                    for col_idx, col in enumerate(df_upload_display.columns, 1):
-                        max_len = max(df_upload_display[col].astype(str).apply(len).max(), len(str(col))) + 2
-                        worksheet_upload.column_dimensions[worksheet_upload.cell(row=1, column=col_idx).column_letter].width = min(max_len, 50)
-                    
-                output_colored.seek(0)
-                
-                st.download_button(
-                    label="📥 Download Excel dengan Warna",
-                    data=output_colored,
-                    file_name="hasil_perbandingan_berwarna.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+                    st.download_button(
+                        label="📥 Download Excel dengan Warna",
+                        data=output_colored,
+                        file_name="hasil_perbandingan_berwarna.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
                 
                 if missing_in_upload:
                     

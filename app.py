@@ -781,7 +781,8 @@ with tab_hs:
                                 'sheet': sheet_name
                             })
 
-            st.success(f"Total **{len(hs_items)}** HS Code ditemukan dalam file")
+            sheet_info = f" (dari {len(all_sheet_names)} sheet: {', '.join(all_sheet_names)})" if len(all_sheet_names) > 1 else ""
+            st.success(f"Total **{len(hs_items)}** HS Code unik ditemukan dalam file{sheet_info}")
 
             all_prefixes = sorted(list(set(h['prefix'] for h in hs_items)))
             prefix_counts = {}
@@ -1026,12 +1027,14 @@ with tab_hs:
                             progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(codes_to_check)})...")
                             status_text.text(f"Sedang memproses: {hs_code} - {all_hs_desc_map.get(hs_code, '')[:60]}")
 
+                            last_error_msg = ''
                             result_entry = None
                             for retry in range(max_retries + 1):
                                 try:
                                     result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
                                     break
                                 except Exception as e_hs:
+                                    last_error_msg = str(e_hs)[:80]
                                     if retry < max_retries:
                                         try:
                                             pw_page.close()
@@ -1054,40 +1057,25 @@ with tab_hs:
                                                 pw_page = pw_browser.new_page()
                                                 pw_page.set_default_timeout(30000)
                                             except Exception as e_launch:
-                                                error_count += 1
-                                                result_entry = {
-                                                    'HS Code': hs_code,
-                                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
-                                                    'Jenis': 'Error',
-                                                    'Ada Regulasi Impor': '-', 'Lartas Border': '-',
-                                                    'Tata Niaga Post Border': '-', 'Ada Regulasi Ekspor': '-',
-                                                    'Lartas Ekspor': '-', 'Komoditi INSW': '-',
-                                                    'Terkait Obat (INSW)': '-', 'Ada BPOM': '-',
-                                                    'Keterangan Impor': f'Browser error: {str(e_launch)[:60]}',
-                                                    'Keterangan Ekspor': '-',
-                                                }
+                                                last_error_msg = f'Browser error: {str(e_launch)[:60]}'
                                                 break
-                                    else:
-                                        error_count += 1
-                                        result_entry = {
-                                            'HS Code': hs_code,
-                                            'Deskripsi': all_hs_desc_map.get(hs_code, ''),
-                                            'Jenis': 'Error',
-                                            'Ada Regulasi Impor': '-',
-                                            'Lartas Border': '-',
-                                            'Tata Niaga Post Border': '-',
-                                            'Ada Regulasi Ekspor': '-',
-                                            'Lartas Ekspor': '-',
-                                            'Komoditi INSW': '-',
-                                            'Terkait Obat (INSW)': '-',
-                                            'Ada BPOM': '-',
-                                            'Keterangan Impor': f'Error: {str(e_hs)[:80]}',
-                                            'Keterangan Ekspor': '-',
-                                        }
 
-                            if result_entry:
-                                insw_temp_results.append(result_entry)
-                                st.session_state['insw_results'] = list(insw_temp_results)
+                            if result_entry is None:
+                                error_count += 1
+                                result_entry = {
+                                    'HS Code': hs_code,
+                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
+                                    'Jenis': 'Error',
+                                    'Ada Regulasi Impor': '-', 'Lartas Border': '-',
+                                    'Tata Niaga Post Border': '-', 'Ada Regulasi Ekspor': '-',
+                                    'Lartas Ekspor': '-', 'Komoditi INSW': '-',
+                                    'Terkait Obat (INSW)': '-', 'Ada BPOM': '-',
+                                    'Keterangan Impor': f'Error: {last_error_msg}',
+                                    'Keterangan Ekspor': '-',
+                                }
+
+                            insw_temp_results.append(result_entry)
+                            st.session_state['insw_results'] = list(insw_temp_results)
 
                         try:
                             pw_browser.close()
@@ -1098,10 +1086,12 @@ with tab_hs:
                     st.session_state['insw_running'] = False
                     st.session_state['insw_complete'] = True
                     progress_insw.progress(1.0, text="Selesai!")
+                    total_checked = len(insw_temp_results)
+                    total_expected = len(codes_to_check)
                     if error_count > 0:
-                        status_text.text(f"Selesai! ({error_count} HS Code mengalami error)")
+                        status_text.text(f"Selesai! {total_checked}/{total_expected} HS Code dicek ({error_count} error)")
                     else:
-                        status_text.text("Pengecekan INSW selesai!")
+                        status_text.text(f"Pengecekan INSW selesai! {total_checked}/{total_expected} HS Code dicek")
                     st.rerun()
 
                 except Exception as e_insw:

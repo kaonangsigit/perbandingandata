@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 import re
+import os
+import json
+from openai import OpenAI
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 st.set_page_config(
@@ -776,11 +779,65 @@ with tab_hs:
         
         return False, 'Bukan Obat/Bahan Baku Obat'
     
+    def classify_hs_with_ai(hs_items_batch):
+        client = OpenAI(
+            api_key=os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY"),
+            base_url=os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL"),
+        )
+        
+        items_text = ""
+        for i, h in enumerate(hs_items_batch):
+            items_text += f"{i+1}. HS Code: {h['hs_code']} - {h['description']}\n"
+        
+        prompt = f"""You are a pharmaceutical and drug substance classification expert. 
+Analyze each HS Code below and determine if it is a pharmaceutical product, drug raw material (bahan baku obat), or related to medicine/healthcare.
+
+Consider these criteria:
+- Active Pharmaceutical Ingredients (API) / Bahan aktif obat
+- Excipients used in drug formulation / Bahan tambahan obat
+- Finished pharmaceutical products / Produk farmasi jadi
+- Medical devices and surgical supplies / Alat kesehatan
+- Vaccine, serum, blood products / Vaksin dan produk darah
+- Traditional/herbal medicine ingredients / Bahan obat tradisional
+- Chemical compounds commonly used in pharmaceutical manufacturing
+- Substances listed in pharmacopoeia
+
+For each item, respond with a JSON array. Each element must have:
+- "index": the item number (1-based)
+- "is_pharma": true or false
+- "kategori": one of: "Produk Farmasi", "Bahan Baku Obat (Kimia Organik)", "Bahan Baku Obat (Kimia Anorganik)", "Bahan Terkait Farmasi", "Pupuk (Bukan Obat)", "Bukan Obat/Bahan Baku Obat"
+- "alasan": brief reason in Indonesian (max 15 words)
+
+Items to classify:
+{items_text}
+
+Respond ONLY with the JSON array, no other text."""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+            )
+            
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1]
+                content = content.rsplit("```", 1)[0]
+            
+            ai_results = json.loads(content)
+            return ai_results
+        except Exception as e:
+            st.error(f"Error dari AI: {str(e)}")
+            return None
+    
     file_hs = st.file_uploader("📁 Upload file data BPS", type=['xlsx', 'xls'], key="hs_check")
     
     if file_hs:
         try:
-            df_hs_raw = pd.read_excel(file_hs, header=None)
+            df_hs_raw = pd.read_excel(file_hs, header=None, dtype=str)
+            for col in df_hs_raw.columns:
+                df_hs_raw[col] = df_hs_raw[col].astype(str).replace('nan', '')
             
             header_row = None
             for i in range(min(10, len(df_hs_raw))):
@@ -833,24 +890,90 @@ with tab_hs:
             with col5:
                 st.metric("HS 31 (Pupuk)", count_31)
             
+            st.markdown("---")
+            st.markdown("### Metode Klasifikasi")
+            
+            metode = st.radio(
+                "Pilih metode klasifikasi:",
+                ["Keyword (Offline)", "AI / ChatGPT (Online)"],
+                horizontal=True,
+                help="Keyword: cepat, tanpa biaya, berdasarkan daftar kata kunci. AI: lebih akurat, menggunakan kecerdasan buatan untuk menganalisis setiap HS Code."
+            )
+            
+            use_ai = metode == "AI / ChatGPT (Online)"
+            
             results = []
-            for h in hs_filtered:
-                is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
-                results.append({
-                    'HS Code': h['hs_code'],
-                    'Deskripsi (English)': h['description'],
-                    'Kategori': kategori,
-                    'Masuk Obat/Bahan Obat': 'YA' if is_pharma else 'TIDAK',
-                    'Chapter': f"HS {h['prefix']}"
-                })
+            
+            if use_ai:
+                st.info("Menggunakan AI untuk klasifikasi. Proses ini memerlukan beberapa saat...")
+                
+                batch_size = 30
+                progress_bar = st.progress(0)
+                total_batches = max(1, (len(hs_filtered) + batch_size - 1) // batch_size)
+                
+                for batch_idx in range(0, len(hs_filtered), batch_size):
+                    batch = hs_filtered[batch_idx:batch_idx + batch_size]
+                    current_batch = batch_idx // batch_size + 1
+                    progress_bar.progress(current_batch / total_batches, text=f"Memproses batch {current_batch}/{total_batches}...")
+                    
+                    ai_results = classify_hs_with_ai(batch)
+                    
+                    ai_map = {}
+                    if ai_results:
+                        for ai_item in ai_results:
+                            idx = ai_item.get('index', 0) - 1
+                            if 0 <= idx < len(batch):
+                                ai_map[idx] = ai_item
+                    
+                    for i, h in enumerate(batch):
+                        if i in ai_map:
+                            ai_item = ai_map[i]
+                            is_pharma = ai_item.get('is_pharma', False)
+                            kategori = ai_item.get('kategori', 'Tidak Diketahui')
+                            alasan = ai_item.get('alasan', '')
+                        else:
+                            is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
+                            alasan = '(Fallback ke keyword)'
+                        
+                        results.append({
+                            'HS Code': h['hs_code'],
+                            'Deskripsi (English)': h['description'],
+                            'Kategori': kategori,
+                            'Masuk Obat/Bahan Obat': 'YA' if is_pharma else 'TIDAK',
+                            'Alasan AI': alasan,
+                            'Chapter': f"HS {h['prefix']}",
+                            '_row_idx': h['row_idx']
+                        })
+                
+                progress_bar.progress(1.0, text="Selesai!")
+            else:
+                for h in hs_filtered:
+                    is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
+                    results.append({
+                        'HS Code': h['hs_code'],
+                        'Deskripsi (English)': h['description'],
+                        'Kategori': kategori,
+                        'Masuk Obat/Bahan Obat': 'YA' if is_pharma else 'TIDAK',
+                        'Chapter': f"HS {h['prefix']}",
+                        '_row_idx': h['row_idx']
+                    })
             
             df_results = pd.DataFrame(results)
             
-            pharma_count = len(df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA'])
-            non_pharma_count = len(df_results[df_results['Masuk Obat/Bahan Obat'] == 'TIDAK'])
+            results_lookup = {}
+            for r in results:
+                results_lookup[r['_row_idx']] = r
+            
+            df_display = df_results.drop(columns=['_row_idx'], errors='ignore')
+            
+            pharma_count = len(df_display[df_display['Masuk Obat/Bahan Obat'] == 'YA'])
+            non_pharma_count = len(df_display[df_display['Masuk Obat/Bahan Obat'] == 'TIDAK'])
             
             st.markdown("---")
             st.markdown("### 💊 Hasil Klasifikasi Otomatis")
+            
+            if use_ai:
+                st.caption("Klasifikasi menggunakan AI - kolom 'Alasan AI' menunjukkan alasan klasifikasi")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -867,15 +990,15 @@ with tab_hs:
                     else:
                         return ['background-color: #fef2f2'] * len(row)
                 
-                styled_df = df_results.style.apply(highlight_pharma, axis=1)
+                styled_df = df_display.style.apply(highlight_pharma, axis=1)
                 st.dataframe(styled_df, use_container_width=True, height=400)
             
             with tab_pharma:
-                df_pharma = df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA']
+                df_pharma = df_display[df_display['Masuk Obat/Bahan Obat'] == 'YA']
                 st.dataframe(df_pharma, use_container_width=True, height=400)
             
             with tab_non:
-                df_non_pharma = df_results[df_results['Masuk Obat/Bahan Obat'] == 'TIDAK']
+                df_non_pharma = df_display[df_display['Masuk Obat/Bahan Obat'] == 'TIDAK']
                 st.dataframe(df_non_pharma, use_container_width=True, height=400)
             
             st.markdown("---")
@@ -899,10 +1022,12 @@ with tab_hs:
             df_output = df_hs_raw.copy()
             
             for h in hs_filtered:
-                is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
-                if is_pharma:
+                r = results_lookup.get(h['row_idx'])
+                if r and r['Masuk Obat/Bahan Obat'] == 'YA':
                     df_output.iloc[h['row_idx'], hs_code_col] = h['hs_code']
-                    df_output.iloc[h['row_idx'], nama_obat_col] = kategori + ': ' + h['description']
+                    df_output.iloc[h['row_idx'], nama_obat_col] = r['Kategori'] + ': ' + h['description']
+            
+            df_export = df_display.copy()
             
             output_hs = io.BytesIO()
             with pd.ExcelWriter(output_hs, engine='openpyxl') as writer:
@@ -921,8 +1046,8 @@ with tab_hs:
                 
                 pharma_rows = set()
                 for h in hs_filtered:
-                    is_pharma, _ = classify_hs_pharma(h['hs_code'], h['description'])
-                    if is_pharma:
+                    r = results_lookup.get(h['row_idx'])
+                    if r and r['Masuk Obat/Bahan Obat'] == 'YA':
                         pharma_rows.add(h['row_idx'] + 1)
                 
                 for row_idx in range(1, len(df_output) + 1):
@@ -932,29 +1057,31 @@ with tab_hs:
                         if row_idx in pharma_rows:
                             cell.fill = green_fill
                 
-                df_results.to_excel(writer, index=False, sheet_name='Klasifikasi HS Code')
+                df_export.to_excel(writer, index=False, sheet_name='Klasifikasi HS Code')
                 ws_klasifikasi = writer.sheets['Klasifikasi HS Code']
                 
-                for col_idx in range(1, len(df_results.columns) + 1):
+                status_col_idx = list(df_export.columns).index('Masuk Obat/Bahan Obat') + 1 if 'Masuk Obat/Bahan Obat' in df_export.columns else 4
+                
+                for col_idx in range(1, len(df_export.columns) + 1):
                     cell = ws_klasifikasi.cell(row=1, column=col_idx)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal='center')
                     cell.border = thin_border
                 
-                for row_idx in range(2, len(df_results) + 2):
-                    status_cell = ws_klasifikasi.cell(row=row_idx, column=4)
-                    for col_idx in range(1, len(df_results.columns) + 1):
+                for row_idx in range(2, len(df_export) + 2):
+                    status_cell = ws_klasifikasi.cell(row=row_idx, column=status_col_idx)
+                    for col_idx in range(1, len(df_export.columns) + 1):
                         cell = ws_klasifikasi.cell(row=row_idx, column=col_idx)
                         cell.border = thin_border
                         if str(status_cell.value) == 'YA':
                             cell.fill = green_fill
                 
-                for col_idx, col in enumerate(df_results.columns, 1):
-                    max_len = max(df_results[col].astype(str).apply(len).max(), len(str(col))) + 2
+                for col_idx, col in enumerate(df_export.columns, 1):
+                    max_len = max(df_export[col].astype(str).apply(len).max(), len(str(col))) + 2
                     ws_klasifikasi.column_dimensions[ws_klasifikasi.cell(row=1, column=col_idx).column_letter].width = min(max_len, 60)
                 
-                df_pharma_only = df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA'].copy()
+                df_pharma_only = df_export[df_export['Masuk Obat/Bahan Obat'] == 'YA'].copy()
                 df_pharma_only.to_excel(writer, index=False, sheet_name='Obat & Bahan Baku Obat')
                 ws_obat = writer.sheets['Obat & Bahan Baku Obat']
                 

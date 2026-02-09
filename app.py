@@ -1116,6 +1116,49 @@ Respond ONLY with the JSON array, no other text."""
             )
             
             st.markdown("---")
+            st.markdown("### 🌐 Cek di INSW (Indonesia National Single Window)")
+            st.markdown("""
+            Untuk memverifikasi apakah HS Code memiliki **satuan barang ekspor/impor**, 
+            Anda dapat mengecek langsung di website INSW. Klik link di bawah untuk membuka 
+            halaman detail komoditas INSW, lalu cari HS Code yang ingin dicek.
+            """)
+            
+            st.warning("⚠️ **Catatan:** Website INSW memerlukan login untuk akses API, sehingga pengecekan otomatis tidak tersedia. Silakan cek secara manual dengan mengklik link di bawah.")
+            
+            insw_base_url = "https://insw.go.id/intr/detail-komoditas"
+            
+            st.markdown(f"🔗 **Buka halaman INSW:** [Detail Komoditas INSW]({insw_base_url})")
+            
+            st.markdown("#### 📋 Daftar HS Code untuk Dicek di INSW")
+            st.caption("Klik HS Code di kolom 'Link INSW' untuk membuka halaman pencarian INSW")
+            
+            insw_data = []
+            for r in results:
+                hs = r['HS Code']
+                insw_data.append({
+                    'HS Code': hs,
+                    'Deskripsi': r.get('Deskripsi (English)', ''),
+                    'Klasifikasi': r.get('Kategori', ''),
+                    'Obat?': r.get('Masuk Obat/Bahan Obat', ''),
+                })
+            
+            df_insw = pd.DataFrame(insw_data)
+            st.dataframe(df_insw, use_container_width=True, height=300)
+            
+            insw_txt = "Daftar HS Code untuk dicek di INSW:\n\n"
+            insw_txt += f"Link INSW: {insw_base_url}\n\n"
+            for r in results:
+                insw_txt += f"HS Code: {r['HS Code']} - {r.get('Deskripsi (English)', '')}\n"
+            
+            st.download_button(
+                label="📥 Download Daftar HS Code (TXT)",
+                data=insw_txt,
+                file_name="daftar_hs_code_insw.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+            
+            st.markdown("---")
             st.info("**Catatan:** Klasifikasi otomatis berdasarkan deskripsi HS Code. Untuk verifikasi lebih lanjut, cek di [INSW INTR](https://insw.go.id/intr/detail-komoditas)")
             
         except Exception as e:

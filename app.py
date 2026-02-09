@@ -1377,6 +1377,20 @@ Respond ONLY with the JSON array, no other text."""
                     
                     st.markdown("#### Detail Hasil Pengecekan INSW")
                     
+                    filter_hs_prefix = st.multiselect(
+                        "🔎 Filter Hasil: Tampilkan HS Code dengan awalan",
+                        options=["28", "29", "30", "31"],
+                        default=[],
+                        key="insw_filter_prefix",
+                        help="Pilih satu atau lebih awalan HS Code untuk memfilter hasil. Kosongkan untuk menampilkan semua."
+                    )
+                    
+                    if filter_hs_prefix:
+                        df_insw_display = df_insw_results[df_insw_results['HS Code'].astype(str).str[:2].isin(filter_hs_prefix)]
+                        st.caption(f"Menampilkan {len(df_insw_display)} dari {len(df_insw_results)} HS Code (filter: awalan {', '.join(filter_hs_prefix)})")
+                    else:
+                        df_insw_display = df_insw_results
+                    
                     def highlight_insw(row):
                         if row.get('Terkait Obat (INSW)') == 'YA':
                             return ['background-color: #dcfce7'] * len(row)
@@ -1388,32 +1402,35 @@ Respond ONLY with the JSON array, no other text."""
                             return ['background-color: #fef2f2'] * len(row)
                         return [''] * len(row)
                     
-                    styled_insw = df_insw_results.style.apply(highlight_insw, axis=1)
-                    st.dataframe(styled_insw, use_container_width=True, height=400)
+                    if len(df_insw_display) > 0:
+                        styled_insw = df_insw_display.style.apply(highlight_insw, axis=1)
+                        st.dataframe(styled_insw, use_container_width=True, height=400)
+                    else:
+                        st.info("Tidak ada HS Code yang cocok dengan filter yang dipilih.")
                     
                     tab_insw_all, tab_insw_impor, tab_insw_ekspor, tab_insw_obat = st.tabs(
                         ["Semua", "Ada Regulasi Impor", "Ada Regulasi Ekspor", "Terkait Obat"]
                     )
                     
                     with tab_insw_all:
-                        st.dataframe(df_insw_results, use_container_width=True, height=300)
+                        st.dataframe(df_insw_display, use_container_width=True, height=300)
                     
                     with tab_insw_impor:
-                        df_insw_imp = df_insw_results[df_insw_results['Ada Regulasi Impor'] == 'YA']
+                        df_insw_imp = df_insw_display[df_insw_display['Ada Regulasi Impor'] == 'YA']
                         if len(df_insw_imp) > 0:
                             st.dataframe(df_insw_imp, use_container_width=True, height=300)
                         else:
                             st.info("Tidak ada HS Code yang memiliki regulasi impor")
                     
                     with tab_insw_ekspor:
-                        df_insw_eks = df_insw_results[df_insw_results['Ada Regulasi Ekspor'] == 'YA']
+                        df_insw_eks = df_insw_display[df_insw_display['Ada Regulasi Ekspor'] == 'YA']
                         if len(df_insw_eks) > 0:
                             st.dataframe(df_insw_eks, use_container_width=True, height=300)
                         else:
                             st.info("Tidak ada HS Code yang memiliki regulasi ekspor")
                     
                     with tab_insw_obat:
-                        df_insw_obat = df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA']
+                        df_insw_obat = df_insw_display[df_insw_display['Terkait Obat (INSW)'] == 'YA']
                         if len(df_insw_obat) > 0:
                             st.dataframe(df_insw_obat, use_container_width=True, height=300)
                         else:

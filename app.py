@@ -895,15 +895,17 @@ with tab_hs:
                     search_queries = [hs_code, format_hs_dotted(hs_code)]
                     for attempt, query in enumerate(search_queries):
                         pw_page.goto(INSW_URL, timeout=30000, wait_until='domcontentloaded')
+                        pw_page.wait_for_timeout(1000)
                         search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
                         search_input.fill(query)
                         search_input.press("Enter")
 
                         try:
-                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=10000)
+                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=15000)
                         except Exception:
                             continue
 
+                        pw_page.wait_for_timeout(1000)
                         body_text = pw_page.inner_text("body")
                         if hs_code not in body_text:
                             continue

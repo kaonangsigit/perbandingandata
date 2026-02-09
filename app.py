@@ -767,15 +767,16 @@ with tab_hs:
 
             st.markdown("---")
 
-            playwright_available = False
-            try:
-                from playwright.sync_api import sync_playwright as _pw_check
-                known_gbm = "/nix/store/24w3s75aa2lrvvxsybficn8y3zxd27kp-mesa-libgbm-25.1.0/lib"
-                chromium_path = os.path.expanduser("~/.cache/ms-playwright")
-                if os.path.exists(chromium_path) and (os.path.exists(known_gbm + "/libgbm.so.1") or 'libgbm' in os.environ.get("LD_LIBRARY_PATH", "")):
-                    playwright_available = True
-            except ImportError:
-                pass
+            if 'playwright_available' not in st.session_state:
+                try:
+                    from playwright.sync_api import sync_playwright as _pw_check
+                    with _pw_check() as _pw_test:
+                        _test_browser = _pw_test.chromium.launch(headless=True)
+                        _test_browser.close()
+                        st.session_state['playwright_available'] = True
+                except Exception:
+                    st.session_state['playwright_available'] = False
+            playwright_available = st.session_state['playwright_available']
 
             btn_insw = False
             if not playwright_available:

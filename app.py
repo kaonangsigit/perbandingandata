@@ -741,36 +741,45 @@ with tab_hs:
 
     if file_hs:
         try:
-            df_hs_raw = pd.read_excel(file_hs, header=None, dtype=str)
-            for col in df_hs_raw.columns:
-                df_hs_raw[col] = df_hs_raw[col].astype(str).replace('nan', '')
-
-            header_row = None
-            for i in range(min(10, len(df_hs_raw))):
-                val = str(df_hs_raw.iloc[i, 0]).strip().lower()
-                if 'kode hs' in val or 'hs code' in val:
-                    header_row = i
-                    break
-
-            if header_row is None:
-                header_row = 3
-
-            data_start = header_row + 1
+            xls = pd.ExcelFile(file_hs)
+            all_sheet_names = xls.sheet_names
 
             hs_items = []
-            for idx in range(data_start, len(df_hs_raw)):
-                val = str(df_hs_raw.iloc[idx, 0]).strip()
-                match = re.match(r'\[(\d+)\]\s*(.*)', val)
-                if match:
-                    code = match.group(1)
-                    desc = match.group(2).strip()
-                    hs_items.append({
-                        'row_idx': idx,
-                        'raw_value': val,
-                        'hs_code': code,
-                        'description': desc,
-                        'prefix': code[:2]
-                    })
+            seen_codes = set()
+
+            for sheet_name in all_sheet_names:
+                df_hs_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
+                for col in df_hs_raw.columns:
+                    df_hs_raw[col] = df_hs_raw[col].astype(str).replace('nan', '')
+
+                header_row = None
+                for i in range(min(10, len(df_hs_raw))):
+                    val = str(df_hs_raw.iloc[i, 0]).strip().lower()
+                    if 'kode hs' in val or 'hs code' in val:
+                        header_row = i
+                        break
+
+                if header_row is None:
+                    header_row = 3
+
+                data_start = header_row + 1
+
+                for idx in range(data_start, len(df_hs_raw)):
+                    val = str(df_hs_raw.iloc[idx, 0]).strip()
+                    match = re.match(r'\[(\d+)\]\s*(.*)', val)
+                    if match:
+                        code = match.group(1)
+                        if code not in seen_codes:
+                            seen_codes.add(code)
+                            desc = match.group(2).strip()
+                            hs_items.append({
+                                'row_idx': idx,
+                                'raw_value': val,
+                                'hs_code': code,
+                                'description': desc,
+                                'prefix': code[:2],
+                                'sheet': sheet_name
+                            })
 
             st.success(f"Total **{len(hs_items)}** HS Code ditemukan dalam file")
 

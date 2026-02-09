@@ -44,7 +44,8 @@ Preferred communication style: Simple, everyday language.
 2. **Pandas for Data Processing**: Standard choice for Excel/tabular data manipulation in Python
 3. **Wide Layout**: Enables side-by-side comparison of datasets which is core to the application's purpose
 4. **INSW-only approach**: Removed keyword/AI classification in favor of direct INSW website scraping for accuracy
-5. **Page reuse optimization**: Navigate to INSW once, use back-navigation between checks instead of reloading
+5. **Background threading for INSW scraping**: Scraping runs in a daemon thread with thread-safe shared state (`_insw_shared_state` + `_insw_lock`), while main Streamlit thread polls every 3s for progress updates. This prevents WebSocket timeout/disconnection during long scraping sessions.
+6. **Dual format HS Code search**: Tries plain 8-digit format first, then dotted format (XXXX.XX.XX) if INSW doesn't find it
 
 ## External Dependencies
 
@@ -69,8 +70,11 @@ Preferred communication style: Simple, everyday language.
 - No authentication systems
 
 ## Recent Changes
+- 2026-02-09: Refactored INSW scraping to background threading with thread-safe shared state to prevent WebSocket disconnection
+- 2026-02-09: Added dual format HS Code search (plain + dotted) for INSW compatibility
+- 2026-02-09: Increased timeouts (60s page load, 20s element waits) for production stability
+- 2026-02-09: Added thread liveness checking and dead thread recovery
 - 2026-02-09: Removed keyword/AI classification section, focused on INSW Otomatis as primary feature
 - 2026-02-09: Added flexible chapter filter (auto-detect all prefixes, multiselect any combination)
-- 2026-02-09: Optimized INSW scraping speed (page reuse, element waits, back-navigation)
 - 2026-02-09: Enhanced import/export differentiation (separate columns, Jenis field, color coding)
 - 2026-02-09: Added separate Excel sheets for Regulasi Impor, Ekspor, and Terkait Obat

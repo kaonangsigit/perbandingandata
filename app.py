@@ -10,6 +10,11 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+import threading as _threading
+_insw_shared_state = {}
+_insw_lock = _threading.Lock()
+_insw_threads = {}
+
 def _setup_playwright_env():
     if os.environ.get('_PLAYWRIGHT_SETUP_DONE'):
         return
@@ -876,297 +881,349 @@ with tab_hs:
                 st.session_state['insw_running'] = True
                 st.session_state['insw_complete'] = False
                 st.session_state.pop('insw_error', None)
-                insw_temp_results = []
+                st.session_state['insw_results'] = []
+                st.session_state['insw_progress_current'] = 0
+                st.session_state['insw_progress_total'] = len(codes_to_check)
+                st.session_state['insw_progress_hs'] = ''
+                st.session_state['insw_progress_desc'] = ''
                 st.session_state['insw_checked_prefixes'] = selected_prefixes
-                progress_insw = st.progress(0)
-                status_text = st.empty()
-                error_container = st.empty()
+                st.session_state['insw_codes_to_check'] = list(codes_to_check)
+                st.session_state['insw_desc_map'] = dict(all_hs_desc_map)
 
-                from playwright.sync_api import sync_playwright
+                import threading
 
-                INSW_URL = "https://insw.go.id/intr/detail-komoditas"
-                OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
-                                'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
-                                'vaksin', 'vitamin', 'narkotik', 'psikotropik',
-                                'kuasi', 'prekursor', 'narkotika', 'psikotropika']
+                def _run_insw_scraping(codes, desc_map, session_id):
+                    import time as _time
 
-                def format_hs_dotted(code):
-                    if len(code) == 8:
-                        return f"{code[:4]}.{code[4:6]}.{code[6:8]}"
-                    return code
+                    def _update_shared(key, value):
+                        with _insw_lock:
+                            if session_id in _insw_shared_state:
+                                _insw_shared_state[session_id][key] = value
 
-                def search_and_click_detail(pw_page, hs_code):
-                    search_queries = [hs_code, format_hs_dotted(hs_code)]
-                    for attempt, query in enumerate(search_queries):
-                        try:
-                            logger.info(f"[INSW] Searching {hs_code} with query '{query}' (attempt {attempt+1})")
-                            pw_page.goto(INSW_URL, timeout=60000, wait_until='domcontentloaded')
-                            pw_page.wait_for_timeout(2000)
-                            search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=20000)
-                            search_input.fill(query)
-                            search_input.press("Enter")
+                    def _update_shared_multi(updates):
+                        with _insw_lock:
+                            if session_id in _insw_shared_state:
+                                _insw_shared_state[session_id].update(updates)
 
+                    INSW_URL = "https://insw.go.id/intr/detail-komoditas"
+                    OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
+                                    'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
+                                    'vaksin', 'vitamin', 'narkotik', 'psikotropik',
+                                    'kuasi', 'prekursor', 'narkotika', 'psikotropika']
+                    BROWSER_ARGS = [
+                        '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+                        '--single-process', '--disable-extensions',
+                        '--disable-background-networking',
+                        '--disable-software-rasterizer',
+                        '--disable-translate',
+                        '--no-first-run',
+                        '--no-zygote',
+                    ]
+                    max_retries = 3
+
+                    def format_hs_dotted(code):
+                        if len(code) == 8:
+                            return f"{code[:4]}.{code[4:6]}.{code[6:8]}"
+                        return code
+
+                    def search_and_click_detail(pw_page, hs_code):
+                        search_queries = [hs_code, format_hs_dotted(hs_code)]
+                        for attempt, query in enumerate(search_queries):
                             try:
-                                pw_page.wait_for_selector("button:has-text('Detail')", timeout=20000)
-                            except Exception:
-                                logger.info(f"[INSW] No Detail button found for query '{query}'")
+                                logger.info(f"[INSW] Searching {hs_code} with query '{query}' (attempt {attempt+1})")
+                                pw_page.goto(INSW_URL, timeout=60000, wait_until='domcontentloaded')
+                                pw_page.wait_for_timeout(2000)
+                                search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=20000)
+                                search_input.fill(query)
+                                search_input.press("Enter")
+                                try:
+                                    pw_page.wait_for_selector("button:has-text('Detail')", timeout=20000)
+                                except Exception:
+                                    logger.info(f"[INSW] No Detail button found for query '{query}'")
+                                    continue
+                                pw_page.wait_for_timeout(1500)
+                                body_text = pw_page.inner_text("body")
+                                if hs_code not in body_text:
+                                    logger.info(f"[INSW] HS code {hs_code} not in search results for query '{query}'")
+                                    continue
+                                rows = pw_page.query_selector_all("tr")
+                                for row in rows:
+                                    row_text = row.inner_text()
+                                    if hs_code in row_text:
+                                        detail_btn = row.query_selector("button:has-text('Detail')")
+                                        if detail_btn:
+                                            detail_btn.click()
+                                            pw_page.wait_for_timeout(3000)
+                                            logger.info(f"[INSW] Clicked Detail for {hs_code}")
+                                            return True
+                                detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
+                                if detail_btns:
+                                    detail_btns[0].click()
+                                    pw_page.wait_for_timeout(3000)
+                                    return True
+                            except Exception as e:
+                                logger.error(f"[INSW] Error searching {hs_code} with query '{query}': {str(e)[:100]}")
                                 continue
+                        return False
 
-                            pw_page.wait_for_timeout(1500)
-                            body_text = pw_page.inner_text("body")
-                            if hs_code not in body_text:
-                                logger.info(f"[INSW] HS code {hs_code} not in search results for query '{query}'")
-                                continue
-
-                            rows = pw_page.query_selector_all("tr")
-                            for row in rows:
-                                row_text = row.inner_text()
-                                if hs_code in row_text:
-                                    detail_btn = row.query_selector("button:has-text('Detail')")
-                                    if detail_btn:
-                                        detail_btn.click()
-                                        pw_page.wait_for_timeout(3000)
-                                        logger.info(f"[INSW] Clicked Detail for {hs_code}")
-                                        return True
-
-                            detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
-                            if detail_btns:
-                                detail_btns[0].click()
-                                pw_page.wait_for_timeout(3000)
-                                logger.info(f"[INSW] Clicked first Detail button for {hs_code}")
-                                return True
-                        except Exception as e:
-                            logger.error(f"[INSW] Error searching {hs_code} with query '{query}': {str(e)[:100]}")
-                            continue
-
-                    logger.warning(f"[INSW] {hs_code} not found with any format")
-                    return False
-
-                def extract_insw_detail(pw_page, hs_code, desc_text=''):
-                    entry = {
-                        'HS Code': hs_code,
-                        'Deskripsi': desc_text,
-                        'Jenis': '-',
-                        'Ada Regulasi Impor': 'Tidak',
-                        'Lartas Border': 'Tidak',
-                        'Tata Niaga Post Border': 'Tidak',
-                        'Ada Regulasi Ekspor': 'Tidak',
-                        'Lartas Ekspor': 'Tidak',
-                        'Komoditi INSW': '-',
-                        'Terkait Obat (INSW)': 'Tidak',
-                        'Ada BPOM': 'Tidak',
-                        'Keterangan Impor': '-',
-                        'Keterangan Ekspor': '-',
-                    }
-
-                    found = search_and_click_detail(pw_page, hs_code)
-                    if not found:
-                        entry['Jenis'] = 'Tidak ditemukan'
-                        entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
-                        entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
+                    def extract_insw_detail(pw_page, hs_code, desc_text=''):
+                        entry = {
+                            'HS Code': hs_code, 'Deskripsi': desc_text, 'Jenis': '-',
+                            'Ada Regulasi Impor': 'Tidak', 'Lartas Border': 'Tidak',
+                            'Tata Niaga Post Border': 'Tidak', 'Ada Regulasi Ekspor': 'Tidak',
+                            'Lartas Ekspor': 'Tidak', 'Komoditi INSW': '-',
+                            'Terkait Obat (INSW)': 'Tidak', 'Ada BPOM': 'Tidak',
+                            'Keterangan Impor': '-', 'Keterangan Ekspor': '-',
+                        }
+                        found = search_and_click_detail(pw_page, hs_code)
+                        if not found:
+                            entry['Jenis'] = 'Tidak ditemukan'
+                            entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
+                            entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
+                            return entry
+                        pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        body = pw_page.inner_text("body")
+                        has_lartas_border = "Regulasi Impor (Lartas Border)" in body
+                        has_tata_niaga = "Regulasi Impor (Tata Niaga Post Border)" in body
+                        has_import = has_lartas_border or has_tata_niaga or "Regulasi Impor" in body
+                        has_lartas_ekspor = "Regulasi Ekspor (Lartas Ekspor)" in body or "Lartas Ekspor" in body
+                        has_export = has_lartas_ekspor or "Regulasi Ekspor" in body
+                        entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
+                        entry['Lartas Border'] = 'YA' if has_lartas_border else 'Tidak'
+                        entry['Tata Niaga Post Border'] = 'YA' if has_tata_niaga else 'Tidak'
+                        entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
+                        entry['Lartas Ekspor'] = 'YA' if has_lartas_ekspor else 'Tidak'
+                        komoditi_list = []
+                        is_obat = False
+                        ket_impor_parts = []
+                        ket_ekspor_parts = []
+                        lines = body.split('\n')
+                        for li, line in enumerate(lines):
+                            stripped = line.strip()
+                            if stripped == 'Komoditi':
+                                for offset in range(1, 6):
+                                    if li + offset < len(lines):
+                                        next_line = lines[li + offset].strip()
+                                        if next_line.startswith('[') and next_line.endswith(']'):
+                                            komoditi_val = next_line[1:-1]
+                                            if komoditi_val and komoditi_val not in komoditi_list:
+                                                komoditi_list.append(komoditi_val)
+                                            break
+                                        elif next_line == ':':
+                                            continue
+                                        elif next_line and next_line not in ('Regulasi', 'Deskripsi', ''):
+                                            break
+                        if komoditi_list:
+                            entry['Komoditi INSW'] = '; '.join(komoditi_list)
+                            for k_val in komoditi_list:
+                                k_lower = k_val.lower()
+                                for ok in OBAT_KEYWORDS:
+                                    if ok in k_lower:
+                                        is_obat = True
+                                        break
+                        body_lower = body.lower()
+                        if 'bahan obat' in body_lower or 'bahan baku obat' in body_lower:
+                            is_obat = True
+                        has_bpom = 'BPOM' in body
+                        entry['Ada BPOM'] = 'YA' if has_bpom else 'Tidak'
+                        if has_lartas_border:
+                            ket_impor_parts.append('Lartas Border')
+                        if has_tata_niaga:
+                            ket_impor_parts.append('Tata Niaga Post Border')
+                        if has_bpom:
+                            ket_impor_parts.append('BPOM')
+                        if is_obat:
+                            ket_impor_parts.append('Terkait Obat/Farmasi')
+                        if has_lartas_ekspor:
+                            ket_ekspor_parts.append('Lartas Ekspor')
+                        entry['Keterangan Impor'] = '; '.join(ket_impor_parts) if ket_impor_parts else 'Tidak ada regulasi impor'
+                        entry['Keterangan Ekspor'] = '; '.join(ket_ekspor_parts) if ket_ekspor_parts else 'Tidak ada regulasi ekspor'
+                        if has_import and has_export:
+                            entry['Jenis'] = 'IMPOR & EKSPOR'
+                        elif has_import:
+                            entry['Jenis'] = 'IMPOR'
+                        elif has_export:
+                            entry['Jenis'] = 'EKSPOR'
+                        else:
+                            entry['Jenis'] = 'Tidak ada lartas'
+                        entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
                         return entry
 
-                    pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    results = []
+                    error_count = 0
+                    pw_browser = None
 
-                    body = pw_page.inner_text("body")
+                    try:
+                        from playwright.sync_api import sync_playwright
+                        with sync_playwright() as pw:
+                            logger.info("[INSW-Thread] Launching Chromium browser...")
+                            pw_browser = pw.chromium.launch(headless=True, args=BROWSER_ARGS)
+                            pw_page = pw_browser.new_page()
+                            pw_page.set_default_timeout(60000)
+                            logger.info("[INSW-Thread] Browser launched successfully")
 
-                    has_lartas_border = "Regulasi Impor (Lartas Border)" in body
-                    has_tata_niaga = "Regulasi Impor (Tata Niaga Post Border)" in body
-                    has_import = has_lartas_border or has_tata_niaga or "Regulasi Impor" in body
-                    has_lartas_ekspor = "Regulasi Ekspor (Lartas Ekspor)" in body or "Lartas Ekspor" in body
-                    has_export = has_lartas_ekspor or "Regulasi Ekspor" in body
+                            for idx_hs, hs_code in enumerate(codes):
+                                _update_shared_multi({
+                                    'current': idx_hs + 1,
+                                    'current_hs': hs_code,
+                                    'current_desc': desc_map.get(hs_code, '')[:60],
+                                })
 
-                    entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
-                    entry['Lartas Border'] = 'YA' if has_lartas_border else 'Tidak'
-                    entry['Tata Niaga Post Border'] = 'YA' if has_tata_niaga else 'Tidak'
-                    entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
-                    entry['Lartas Ekspor'] = 'YA' if has_lartas_ekspor else 'Tidak'
-
-                    komoditi_list = []
-                    is_obat = False
-                    ket_impor_parts = []
-                    ket_ekspor_parts = []
-
-                    lines = body.split('\n')
-                    for li, line in enumerate(lines):
-                        stripped = line.strip()
-                        if stripped == 'Komoditi':
-                            for offset in range(1, 6):
-                                if li + offset < len(lines):
-                                    next_line = lines[li + offset].strip()
-                                    if next_line.startswith('[') and next_line.endswith(']'):
-                                        komoditi_val = next_line[1:-1]
-                                        if komoditi_val and komoditi_val not in komoditi_list:
-                                            komoditi_list.append(komoditi_val)
+                                last_error_msg = ''
+                                result_entry = None
+                                for retry in range(max_retries + 1):
+                                    try:
+                                        result_entry = extract_insw_detail(pw_page, hs_code, desc_map.get(hs_code, ''))
                                         break
-                                    elif next_line == ':':
-                                        continue
-                                    elif next_line and next_line not in ('Regulasi', 'Deskripsi', ''):
-                                        break
+                                    except Exception as e_hs:
+                                        last_error_msg = str(e_hs)[:120]
+                                        logger.error(f"[INSW-Thread] Error on {hs_code} retry {retry}: {last_error_msg}")
+                                        if retry < max_retries:
+                                            try:
+                                                pw_page.close()
+                                            except Exception:
+                                                pass
+                                            try:
+                                                pw_browser.close()
+                                            except Exception:
+                                                pass
+                                            _time.sleep(2)
+                                            try:
+                                                pw_browser = pw.chromium.launch(headless=True, args=BROWSER_ARGS)
+                                                pw_page = pw_browser.new_page()
+                                                pw_page.set_default_timeout(60000)
+                                                logger.info(f"[INSW-Thread] Browser restarted for retry {retry+1}")
+                                            except Exception as e_launch:
+                                                last_error_msg = f'Browser restart error: {str(e_launch)[:80]}'
+                                                logger.error(f"[INSW-Thread] {last_error_msg}")
+                                                break
 
-                    if komoditi_list:
-                        entry['Komoditi INSW'] = '; '.join(komoditi_list)
-                        for k_val in komoditi_list:
-                            k_lower = k_val.lower()
-                            for ok in OBAT_KEYWORDS:
-                                if ok in k_lower:
-                                    is_obat = True
-                                    break
+                                if result_entry is None:
+                                    error_count += 1
+                                    result_entry = {
+                                        'HS Code': hs_code, 'Deskripsi': desc_map.get(hs_code, ''),
+                                        'Jenis': 'Error',
+                                        'Ada Regulasi Impor': '-', 'Lartas Border': '-',
+                                        'Tata Niaga Post Border': '-', 'Ada Regulasi Ekspor': '-',
+                                        'Lartas Ekspor': '-', 'Komoditi INSW': '-',
+                                        'Terkait Obat (INSW)': '-', 'Ada BPOM': '-',
+                                        'Keterangan Impor': f'Error: {last_error_msg}',
+                                        'Keterangan Ekspor': '-',
+                                    }
 
-                    body_lower = body.lower()
-                    if 'bahan obat' in body_lower or 'bahan baku obat' in body_lower:
-                        is_obat = True
+                                results.append(result_entry)
+                                _update_shared('results', list(results))
 
-                    has_bpom = 'BPOM' in body
-                    entry['Ada BPOM'] = 'YA' if has_bpom else 'Tidak'
+                            try:
+                                pw_browser.close()
+                            except Exception:
+                                pass
 
-                    if has_lartas_border:
-                        ket_impor_parts.append('Lartas Border')
-                    if has_tata_niaga:
-                        ket_impor_parts.append('Tata Niaga Post Border')
-                    if has_bpom:
-                        ket_impor_parts.append('BPOM')
-                    if is_obat:
-                        ket_impor_parts.append('Terkait Obat/Farmasi')
+                        _update_shared_multi({
+                            'results': results,
+                            'complete': True,
+                            'error_count': error_count,
+                        })
+                        logger.info(f"[INSW-Thread] Completed. {len(results)}/{len(codes)} checked, {error_count} errors")
 
-                    if has_lartas_ekspor:
-                        ket_ekspor_parts.append('Lartas Ekspor')
-
-                    entry['Keterangan Impor'] = '; '.join(ket_impor_parts) if ket_impor_parts else 'Tidak ada regulasi impor'
-                    entry['Keterangan Ekspor'] = '; '.join(ket_ekspor_parts) if ket_ekspor_parts else 'Tidak ada regulasi ekspor'
-
-                    if has_import and has_export:
-                        entry['Jenis'] = 'IMPOR & EKSPOR'
-                    elif has_import:
-                        entry['Jenis'] = 'IMPOR'
-                    elif has_export:
-                        entry['Jenis'] = 'EKSPOR'
-                    else:
-                        entry['Jenis'] = 'Tidak ada lartas'
-
-                    entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
-
-                    return entry
-
-                pw_browser = None
-                error_count = 0
-                max_retries = 3
-
-                BROWSER_ARGS = [
-                    '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-                    '--single-process', '--disable-extensions',
-                    '--disable-background-networking',
-                    '--disable-software-rasterizer',
-                    '--disable-translate',
-                    '--no-first-run',
-                    '--no-zygote',
-                ]
-
-                try:
-                    with sync_playwright() as pw:
-                        logger.info("[INSW] Launching Chromium browser...")
-                        pw_browser = pw.chromium.launch(
-                            headless=True,
-                            args=BROWSER_ARGS
-                        )
-                        pw_page = pw_browser.new_page()
-                        pw_page.set_default_timeout(60000)
-                        logger.info("[INSW] Browser launched successfully")
-
-                        for idx_hs, hs_code in enumerate(codes_to_check):
-                            progress_val = (idx_hs + 1) / len(codes_to_check)
-                            progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(codes_to_check)})...")
-                            status_text.text(f"Sedang memproses: {hs_code} - {all_hs_desc_map.get(hs_code, '')[:60]}")
-
-                            last_error_msg = ''
-                            result_entry = None
-                            for retry in range(max_retries + 1):
-                                try:
-                                    result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
-                                    break
-                                except Exception as e_hs:
-                                    last_error_msg = str(e_hs)[:120]
-                                    logger.error(f"[INSW] Error on {hs_code} retry {retry}: {last_error_msg}")
-                                    if retry < max_retries:
-                                        try:
-                                            pw_page.close()
-                                        except Exception:
-                                            pass
-                                        try:
-                                            pw_browser.close()
-                                        except Exception:
-                                            pass
-                                        try:
-                                            pw_page.wait_for_timeout(2000)
-                                        except Exception:
-                                            import time; time.sleep(2)
-                                        try:
-                                            pw_browser = pw.chromium.launch(
-                                                headless=True,
-                                                args=BROWSER_ARGS
-                                            )
-                                            pw_page = pw_browser.new_page()
-                                            pw_page.set_default_timeout(60000)
-                                            logger.info(f"[INSW] Browser restarted for retry {retry+1}")
-                                        except Exception as e_launch:
-                                            last_error_msg = f'Browser restart error: {str(e_launch)[:80]}'
-                                            logger.error(f"[INSW] {last_error_msg}")
-                                            break
-
-                            if result_entry is None:
-                                error_count += 1
-                                result_entry = {
-                                    'HS Code': hs_code,
-                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
-                                    'Jenis': 'Error',
-                                    'Ada Regulasi Impor': '-', 'Lartas Border': '-',
-                                    'Tata Niaga Post Border': '-', 'Ada Regulasi Ekspor': '-',
-                                    'Lartas Ekspor': '-', 'Komoditi INSW': '-',
-                                    'Terkait Obat (INSW)': '-', 'Ada BPOM': '-',
-                                    'Keterangan Impor': f'Error: {last_error_msg}',
-                                    'Keterangan Ekspor': '-',
-                                }
-
-                            insw_temp_results.append(result_entry)
-                            st.session_state['insw_results'] = list(insw_temp_results)
-
+                    except Exception as e_insw:
+                        error_detail = str(e_insw)
+                        logger.error(f"[INSW-Thread] Fatal error: {error_detail}")
+                        _update_shared_multi({
+                            'results': results,
+                            'complete': True,
+                            'error_msg': error_detail[:200],
+                            'error_count': error_count,
+                        })
                         try:
-                            pw_browser.close()
+                            if pw_browser:
+                                pw_browser.close()
                         except Exception:
                             pass
 
-                    st.session_state['insw_results'] = insw_temp_results
+                import uuid
+                sid = str(uuid.uuid4())[:8]
+                st.session_state['insw_session_id'] = sid
+
+                with _insw_lock:
+                    _insw_shared_state[sid] = {
+                        'results': [],
+                        'complete': False,
+                        'current': 0,
+                        'total': len(codes_to_check),
+                        'current_hs': '',
+                        'current_desc': '',
+                        'error_count': 0,
+                        'error_msg': '',
+                    }
+
+                st.session_state['insw_thread_started'] = True
+
+                t = threading.Thread(
+                    target=_run_insw_scraping,
+                    args=(list(codes_to_check), dict(all_hs_desc_map), sid),
+                    daemon=True
+                )
+                t.start()
+                _insw_threads[sid] = t
+                st.rerun()
+
+            if st.session_state.get('insw_running', False) and st.session_state.get('insw_thread_started', False):
+                import time as _time
+                sid = st.session_state.get('insw_session_id', '')
+
+                with _insw_lock:
+                    shared = dict(_insw_shared_state.get(sid, {}))
+                    if 'results' in shared:
+                        shared['results'] = list(shared['results'])
+
+                thread = _insw_threads.get(sid)
+                thread_alive = thread is not None and thread.is_alive()
+
+                if not shared and not thread_alive:
                     st.session_state['insw_running'] = False
-                    st.session_state['insw_complete'] = True
-                    progress_insw.progress(1.0, text="Selesai!")
-                    total_checked = len(insw_temp_results)
-                    total_expected = len(codes_to_check)
-                    if error_count > 0:
-                        status_text.text(f"Selesai! {total_checked}/{total_expected} HS Code dicek ({error_count} error)")
-                    else:
-                        status_text.text(f"Pengecekan INSW selesai! {total_checked}/{total_expected} HS Code dicek")
+                    st.session_state.pop('insw_thread_started', None)
+                    st.session_state['insw_error'] = "Proses terganggu (koneksi terputus). Silakan klik tombol 'Mulai Cek INSW Otomatis' lagi."
                     st.rerun()
 
-                except Exception as e_insw:
-                    error_detail = str(e_insw)
-                    logger.error(f"[INSW] Fatal error: {error_detail}")
-                    if insw_temp_results:
-                        st.session_state['insw_results'] = insw_temp_results
-                        st.session_state['insw_complete'] = True
-                        st.session_state['insw_error'] = f"Proses terhenti setelah {len(insw_temp_results)} HS Code. Error: {error_detail[:150]}"
-                    else:
-                        if 'Executable doesn' in error_detail or 'browser' in error_detail.lower():
-                            st.session_state['insw_error'] = f"Browser Chromium tidak dapat dijalankan. Silakan coba lagi atau hubungi admin. Detail: {error_detail[:120]}"
-                        elif 'timeout' in error_detail.lower() or 'Timeout' in error_detail:
-                            st.session_state['insw_error'] = f"Koneksi ke INSW timeout. Website INSW mungkin sedang lambat. Silakan coba lagi. Detail: {error_detail[:120]}"
-                        else:
-                            st.session_state['insw_error'] = f"Error saat mengakses INSW: {error_detail[:150]}"
+                total = shared.get('total', st.session_state.get('insw_progress_total', 0))
+                current = shared.get('current', 0)
+                current_hs = shared.get('current_hs', '')
+                current_desc = shared.get('current_desc', '')
+                is_complete = shared.get('complete', False)
+                partial_results = shared.get('results', [])
+                error_msg = shared.get('error_msg', '')
+                error_count = shared.get('error_count', 0)
+
+                if not is_complete and not thread_alive and current > 0:
+                    is_complete = True
+                    error_msg = error_msg or "Thread berhenti tidak terduga"
+
+                if not is_complete:
+                    progress_val = current / total if total > 0 else 0
+                    st.progress(progress_val, text=f"Mengecek HS Code {current_hs} ({current}/{total})...")
+                    st.info(f"Sedang memproses: **{current_hs}** - {current_desc}")
+
+                    if partial_results:
+                        st.caption(f"{len(partial_results)} HS Code sudah dicek...")
+
+                    _time.sleep(3)
+                    st.rerun()
+                else:
+                    st.session_state['insw_results'] = partial_results
                     st.session_state['insw_running'] = False
-                    try:
-                        if pw_browser:
-                            pw_browser.close()
-                    except Exception:
-                        pass
+                    st.session_state['insw_complete'] = True
+                    st.session_state.pop('insw_thread_started', None)
+
+                    if error_msg:
+                        st.session_state['insw_error'] = f"Proses selesai dengan error. {len(partial_results)}/{total} HS Code dicek. Error: {error_msg}"
+                    elif error_count > 0:
+                        st.session_state['insw_error'] = f"Selesai! {len(partial_results)}/{total} HS Code dicek ({error_count} error)"
+
+                    with _insw_lock:
+                        _insw_shared_state.pop(sid, None)
+                    _insw_threads.pop(sid, None)
+
                     st.rerun()
 
             if st.session_state.get('insw_error'):

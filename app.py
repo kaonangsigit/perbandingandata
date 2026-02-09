@@ -1116,10 +1116,11 @@ Respond ONLY with the JSON array, no other text."""
             )
             
             st.markdown("---")
-            st.markdown("### 🌐 Cek di INSW (Indonesia National Single Window)")
-            st.markdown("Cek otomatis setiap HS Code di website INSW untuk mengetahui **regulasi impor/ekspor** dan **klasifikasi komoditi** (obat, bahan baku obat, dll).")
+            st.markdown("### 🌐 Cek INSW Otomatis (Indonesia National Single Window)")
+            st.markdown("Cek otomatis setiap HS Code di website INSW untuk mengetahui apakah barang tersebut memiliki **regulasi impor**, **regulasi ekspor**, atau terkait **bahan baku obat**.")
             
-            unique_hs_codes = list(dict.fromkeys([r['HS Code'] for r in results]))
+            all_hs_codes_insw = list(dict.fromkeys([h['hs_code'] for h in hs_items]))
+            all_hs_desc_map = {h['hs_code']: h['description'] for h in hs_items}
             
             playwright_available = False
             try:
@@ -1133,28 +1134,60 @@ Respond ONLY with the JSON array, no other text."""
             
             btn_insw = False
             if not playwright_available:
-                st.warning("⚠️ Browser otomatis (Playwright/Chromium) tidak tersedia. Hanya mode manual yang bisa digunakan.")
-                st.markdown(f"🔗 **Cek manual di INSW:** [Detail Komoditas INSW](https://insw.go.id/intr/detail-komoditas)")
-                insw_manual_data = []
-                for r in results:
-                    insw_manual_data.append({
-                        'HS Code': r['HS Code'],
-                        'Deskripsi': r.get('Deskripsi (English)', ''),
-                        'Klasifikasi': r.get('Kategori', ''),
-                    })
+                st.warning("Browser otomatis (Playwright/Chromium) tidak tersedia. Gunakan link berikut untuk cek manual.")
+                st.markdown(f"[Buka INSW Detail Komoditas](https://insw.go.id/intr/detail-komoditas)")
+                insw_manual_data = [{'No': i+1, 'HS Code': h['hs_code'], 'Deskripsi': h['description']} for i, h in enumerate(hs_items[:200])]
                 st.dataframe(pd.DataFrame(insw_manual_data), use_container_width=True, height=300)
+                if len(hs_items) > 200:
+                    st.caption(f"Menampilkan 200 dari {len(hs_items)} HS Code")
             else:
-                est_minutes = max(1, len(unique_hs_codes) * 10 // 60)
-                st.info(f"Total **{len(unique_hs_codes)}** HS Code unik akan dicek di INSW. Estimasi waktu: **~{est_minutes} menit** (~10 detik per HS Code).")
+                st.info(f"Total **{len(all_hs_codes_insw)}** HS Code unik ditemukan dalam file.")
                 
-                col_insw1, col_insw2, col_insw3 = st.columns([1, 2, 1])
-                with col_insw2:
-                    btn_insw = st.button("🔍 Mulai Cek INSW Otomatis", type="primary", use_container_width=True, key="btn_insw")
+                insw_scope = st.radio(
+                    "Pilih HS Code yang akan dicek:",
+                    ["Semua HS Code", "Hanya Chapter 28-31 (Kimia & Farmasi)", "Pilih range sendiri"],
+                    horizontal=True,
+                    key="insw_scope"
+                )
+                
+                if insw_scope == "Semua HS Code":
+                    selected_hs_insw = all_hs_codes_insw
+                elif insw_scope == "Hanya Chapter 28-31 (Kimia & Farmasi)":
+                    selected_hs_insw = [h for h in all_hs_codes_insw if h[:2] in ('28', '29', '30', '31')]
+                else:
+                    col_range1, col_range2 = st.columns(2)
+                    with col_range1:
+                        start_idx = st.number_input("Dari urutan ke-", min_value=1, max_value=len(all_hs_codes_insw), value=1, key="insw_start", help="Urutan HS Code dalam file (bukan nomor HS)")
+                    with col_range2:
+                        end_idx = st.number_input("Sampai urutan ke-", min_value=1, max_value=len(all_hs_codes_insw), value=min(50, len(all_hs_codes_insw)), key="insw_end")
+                    selected_hs_insw = all_hs_codes_insw[start_idx-1:end_idx]
+                
+                max_batch = st.slider("Batas maksimal HS Code per sesi", min_value=10, max_value=500, value=min(100, len(selected_hs_insw)), step=10, key="insw_batch_limit")
+                
+                codes_to_check = selected_hs_insw[:max_batch]
+                est_seconds = len(codes_to_check) * 8
+                est_minutes = max(1, est_seconds // 60)
+                
+                st.markdown(f"Akan mengecek **{len(codes_to_check)}** HS Code. Estimasi waktu: **~{est_minutes} menit**.")
+                
+                if len(codes_to_check) > 0:
+                    preview_data = [{'No': i+1, 'HS Code': c, 'Deskripsi': all_hs_desc_map.get(c, '')} for i, c in enumerate(codes_to_check[:10])]
+                    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, height=200)
+                    if len(codes_to_check) > 10:
+                        st.caption(f"... dan {len(codes_to_check) - 10} HS Code lainnya")
+                
+                if len(codes_to_check) == 0:
+                    st.warning("Tidak ada HS Code yang dipilih untuk dicek.")
+                else:
+                    col_insw1, col_insw2, col_insw3 = st.columns([1, 2, 1])
+                    with col_insw2:
+                        btn_insw = st.button("🔍 Mulai Cek INSW Otomatis", type="primary", use_container_width=True, key="btn_insw")
             
             if playwright_available and btn_insw:
                 insw_results = []
                 progress_insw = st.progress(0)
                 status_text = st.empty()
+                results_container = st.empty()
                 
                 try:
                     if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
@@ -1174,16 +1207,21 @@ Respond ONLY with the JSON array, no other text."""
                     INSW_URL = "https://insw.go.id/intr/detail-komoditas"
                     OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
                                     'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
-                                    'vaksin', 'vitamin', 'narkotik', 'psikotropik']
+                                    'vaksin', 'vitamin', 'narkotik', 'psikotropik',
+                                    'kuasi', 'prekursor']
                     
-                    def extract_insw_detail(pw_page, hs_code):
+                    def extract_insw_detail(pw_page, hs_code, desc_text=''):
                         entry = {
                             'HS Code': hs_code,
+                            'Deskripsi': desc_text,
                             'Ada Regulasi Impor': 'Tidak',
+                            'Lartas Border': 'Tidak',
+                            'Tata Niaga Post Border': 'Tidak',
                             'Ada Regulasi Ekspor': 'Tidak',
                             'Komoditi INSW': '-',
                             'Terkait Obat (INSW)': 'Tidak',
-                            'Keterangan INSW': '-'
+                            'Ada BPOM': 'Tidak',
+                            'Keterangan': '-'
                         }
                         
                         pw_page.goto(INSW_URL, timeout=30000)
@@ -1198,22 +1236,27 @@ Respond ONLY with the JSON array, no other text."""
                         
                         detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
                         if not detail_btns:
-                            entry['Keterangan INSW'] = 'Tidak ditemukan di INSW'
+                            entry['Keterangan'] = 'Tidak ditemukan di INSW'
                             return entry
                         
                         detail_btns[0].click()
                         time_mod.sleep(3)
                         pw_page.wait_for_timeout(2000)
                         
-                        pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        time_mod.sleep(1)
+                        for _ in range(3):
+                            pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                            time_mod.sleep(0.5)
                         
                         body = pw_page.inner_text("body")
                         
-                        has_import = "Regulasi Impor" in body
+                        has_lartas_border = "Regulasi Impor (Lartas Border)" in body
+                        has_tata_niaga = "Regulasi Impor (Tata Niaga Post Border)" in body
+                        has_import = has_lartas_border or has_tata_niaga or "Regulasi Impor" in body
                         has_export = "Regulasi Ekspor" in body
                         
                         entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
+                        entry['Lartas Border'] = 'YA' if has_lartas_border else 'Tidak'
+                        entry['Tata Niaga Post Border'] = 'YA' if has_tata_niaga else 'Tidak'
                         entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
                         
                         komoditi_list = []
@@ -1224,12 +1267,12 @@ Respond ONLY with the JSON array, no other text."""
                         for li, line in enumerate(lines):
                             stripped = line.strip()
                             if stripped == 'Komoditi':
-                                for offset in range(1, 5):
+                                for offset in range(1, 6):
                                     if li + offset < len(lines):
                                         next_line = lines[li + offset].strip()
                                         if next_line.startswith('[') and next_line.endswith(']'):
                                             komoditi_val = next_line[1:-1]
-                                            if komoditi_val not in komoditi_list:
+                                            if komoditi_val and komoditi_val not in komoditi_list:
                                                 komoditi_list.append(komoditi_val)
                                             break
                                         elif next_line == ':':
@@ -1240,16 +1283,20 @@ Respond ONLY with the JSON array, no other text."""
                         if komoditi_list:
                             entry['Komoditi INSW'] = '; '.join(komoditi_list)
                             for k_val in komoditi_list:
+                                k_lower = k_val.lower()
                                 for ok in OBAT_KEYWORDS:
-                                    if ok in k_val.lower():
+                                    if ok in k_lower:
                                         is_obat = True
                                         break
                         
-                        if 'Bahan Obat' in body or 'bahan baku obat' in body.lower():
+                        body_lower = body.lower()
+                        if 'bahan obat' in body_lower or 'bahan baku obat' in body_lower:
                             is_obat = True
-                            keterangan_parts.append('Terkait Bahan Obat (dari regulasi)')
+                            keterangan_parts.append('Terkait Bahan Obat')
                         
-                        if 'BPOM' in body:
+                        has_bpom = 'BPOM' in body
+                        entry['Ada BPOM'] = 'YA' if has_bpom else 'Tidak'
+                        if has_bpom:
                             keterangan_parts.append('Ada regulasi BPOM')
                         
                         if has_import and has_export:
@@ -1262,7 +1309,7 @@ Respond ONLY with the JSON array, no other text."""
                             keterangan_parts.insert(0, 'Tidak ada lartas')
                         
                         entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
-                        entry['Keterangan INSW'] = '; '.join(keterangan_parts) if keterangan_parts else '-'
+                        entry['Keterangan'] = '; '.join(keterangan_parts) if keterangan_parts else '-'
                         
                         return entry
                     
@@ -1271,21 +1318,25 @@ Respond ONLY with the JSON array, no other text."""
                         pw_page = pw_browser.new_page()
                         pw_page.set_default_timeout(20000)
                         
-                        for idx_hs, hs_code in enumerate(unique_hs_codes):
-                            progress_val = (idx_hs + 1) / len(unique_hs_codes)
-                            progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(unique_hs_codes)})...")
-                            status_text.text(f"Sedang memproses: {hs_code}")
+                        for idx_hs, hs_code in enumerate(codes_to_check):
+                            progress_val = (idx_hs + 1) / len(codes_to_check)
+                            progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(codes_to_check)})...")
+                            status_text.text(f"Sedang memproses: {hs_code} - {all_hs_desc_map.get(hs_code, '')[:60]}")
                             
                             try:
-                                result_entry = extract_insw_detail(pw_page, hs_code)
+                                result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
                             except Exception as e_hs:
                                 result_entry = {
                                     'HS Code': hs_code,
-                                    'Ada Regulasi Impor': 'Tidak',
-                                    'Ada Regulasi Ekspor': 'Tidak',
+                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
+                                    'Ada Regulasi Impor': '-',
+                                    'Lartas Border': '-',
+                                    'Tata Niaga Post Border': '-',
+                                    'Ada Regulasi Ekspor': '-',
                                     'Komoditi INSW': '-',
-                                    'Terkait Obat (INSW)': 'Tidak',
-                                    'Keterangan INSW': f'Error: {str(e_hs)[:80]}'
+                                    'Terkait Obat (INSW)': '-',
+                                    'Ada BPOM': '-',
+                                    'Keterangan': f'Error: {str(e_hs)[:80]}'
                                 }
                             
                             insw_results.append(result_entry)
@@ -1302,12 +1353,17 @@ Respond ONLY with the JSON array, no other text."""
                 if insw_results:
                     df_insw_results = pd.DataFrame(insw_results)
                     
-                    insw_obat_count = len(df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA'])
                     insw_impor_count = len(df_insw_results[df_insw_results['Ada Regulasi Impor'] == 'YA'])
                     insw_ekspor_count = len(df_insw_results[df_insw_results['Ada Regulasi Ekspor'] == 'YA'])
+                    insw_obat_count = len(df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA'])
+                    insw_bpom_count = len(df_insw_results[df_insw_results['Ada BPOM'] == 'YA'])
+                    insw_no_lartas = len(df_insw_results[
+                        (df_insw_results['Ada Regulasi Impor'] == 'Tidak') & 
+                        (df_insw_results['Ada Regulasi Ekspor'] == 'Tidak')
+                    ])
                     
-                    st.markdown("#### 📊 Ringkasan Hasil INSW")
-                    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+                    st.markdown("#### Ringkasan Hasil INSW")
+                    col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns(5)
                     with col_r1:
                         st.metric("Total Dicek", len(insw_results))
                     with col_r2:
@@ -1315,31 +1371,39 @@ Respond ONLY with the JSON array, no other text."""
                     with col_r3:
                         st.metric("Ada Regulasi Ekspor", insw_ekspor_count)
                     with col_r4:
-                        st.metric("Terkait Obat (INSW)", insw_obat_count)
+                        st.metric("Terkait Obat", insw_obat_count)
+                    with col_r5:
+                        st.metric("Tidak Ada Lartas", insw_no_lartas)
                     
-                    st.markdown("#### 📋 Detail Hasil Pengecekan INSW")
+                    st.markdown("#### Detail Hasil Pengecekan INSW")
                     
                     def highlight_insw(row):
                         if row.get('Terkait Obat (INSW)') == 'YA':
                             return ['background-color: #dcfce7'] * len(row)
                         elif row.get('Ada Regulasi Ekspor') == 'YA':
                             return ['background-color: #fef3c7'] * len(row)
+                        elif row.get('Ada Regulasi Impor') == 'YA':
+                            return ['background-color: #dbeafe'] * len(row)
+                        elif 'Error' in str(row.get('Keterangan', '')):
+                            return ['background-color: #fef2f2'] * len(row)
                         return [''] * len(row)
                     
                     styled_insw = df_insw_results.style.apply(highlight_insw, axis=1)
                     st.dataframe(styled_insw, use_container_width=True, height=400)
                     
-                    tab_insw_all, tab_insw_obat, tab_insw_ekspor = st.tabs(["📋 Semua", "💊 Terkait Obat", "📤 Ada Ekspor"])
+                    tab_insw_all, tab_insw_impor, tab_insw_ekspor, tab_insw_obat = st.tabs(
+                        ["Semua", "Ada Regulasi Impor", "Ada Regulasi Ekspor", "Terkait Obat"]
+                    )
                     
                     with tab_insw_all:
                         st.dataframe(df_insw_results, use_container_width=True, height=300)
                     
-                    with tab_insw_obat:
-                        df_insw_obat = df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA']
-                        if len(df_insw_obat) > 0:
-                            st.dataframe(df_insw_obat, use_container_width=True, height=300)
+                    with tab_insw_impor:
+                        df_insw_imp = df_insw_results[df_insw_results['Ada Regulasi Impor'] == 'YA']
+                        if len(df_insw_imp) > 0:
+                            st.dataframe(df_insw_imp, use_container_width=True, height=300)
                         else:
-                            st.info("Tidak ada HS Code yang terkait obat menurut INSW")
+                            st.info("Tidak ada HS Code yang memiliki regulasi impor")
                     
                     with tab_insw_ekspor:
                         df_insw_eks = df_insw_results[df_insw_results['Ada Regulasi Ekspor'] == 'YA']
@@ -1348,12 +1412,20 @@ Respond ONLY with the JSON array, no other text."""
                         else:
                             st.info("Tidak ada HS Code yang memiliki regulasi ekspor")
                     
+                    with tab_insw_obat:
+                        df_insw_obat = df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA']
+                        if len(df_insw_obat) > 0:
+                            st.dataframe(df_insw_obat, use_container_width=True, height=300)
+                        else:
+                            st.info("Tidak ada HS Code yang terkait obat menurut INSW")
+                    
                     output_insw = io.BytesIO()
                     with pd.ExcelWriter(output_insw, engine='openpyxl') as writer:
                         header_fill_insw = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
                         header_font_insw = Font(bold=True, color='FFFFFF')
                         green_fill_insw = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
                         yellow_fill_insw = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                        blue_fill_insw = PatternFill(start_color='D6E4F0', end_color='D6E4F0', fill_type='solid')
                         thin_border_insw = Border(
                             left=Side(style='thin'), right=Side(style='thin'),
                             top=Side(style='thin'), bottom=Side(style='thin')
@@ -1371,10 +1443,12 @@ Respond ONLY with the JSON array, no other text."""
                         
                         obat_col = list(df_insw_results.columns).index('Terkait Obat (INSW)') + 1
                         ekspor_col = list(df_insw_results.columns).index('Ada Regulasi Ekspor') + 1
+                        impor_col = list(df_insw_results.columns).index('Ada Regulasi Impor') + 1
                         
                         for row_idx in range(2, len(df_insw_results) + 2):
                             obat_val = ws_insw.cell(row=row_idx, column=obat_col).value
                             ekspor_val = ws_insw.cell(row=row_idx, column=ekspor_col).value
+                            impor_val = ws_insw.cell(row=row_idx, column=impor_col).value
                             for col_idx in range(1, len(df_insw_results.columns) + 1):
                                 cell = ws_insw.cell(row=row_idx, column=col_idx)
                                 cell.border = thin_border_insw
@@ -1382,6 +1456,8 @@ Respond ONLY with the JSON array, no other text."""
                                     cell.fill = green_fill_insw
                                 elif ekspor_val == 'YA':
                                     cell.fill = yellow_fill_insw
+                                elif impor_val == 'YA':
+                                    cell.fill = blue_fill_insw
                         
                         for col_idx, col in enumerate(df_insw_results.columns, 1):
                             max_len = max(df_insw_results[col].astype(str).apply(len).max(), len(str(col))) + 2
@@ -1389,7 +1465,7 @@ Respond ONLY with the JSON array, no other text."""
                     
                     output_insw.seek(0)
                     st.download_button(
-                        label="📥 Download Hasil Cek INSW (Excel)",
+                        label="Download Hasil Cek INSW (Excel)",
                         data=output_insw,
                         file_name="hasil_cek_insw.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

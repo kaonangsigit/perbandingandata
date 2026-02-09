@@ -790,7 +790,7 @@ with tab_hs:
                 if len(codes_to_check) == 0:
                     st.warning("Tidak ada HS Code yang dipilih. Pilih minimal 1 chapter di atas.")
                 else:
-                    est_seconds = len(codes_to_check) * 3
+                    est_seconds = len(codes_to_check) * 5
                     est_minutes = max(1, est_seconds // 60)
 
                     st.info(f"Akan mengecek **{len(codes_to_check)}** HS Code unik dari chapter **{', '.join(selected_prefixes)}**. Estimasi waktu: **~{est_minutes} menit**.")
@@ -849,15 +849,18 @@ with tab_hs:
                             'Keterangan Ekspor': '-',
                         }
 
+                        pw_page.goto(INSW_URL, timeout=20000, wait_until='domcontentloaded')
                         search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=10000)
-                        search_input.triple_click()
                         search_input.fill(hs_code)
                         search_input.press("Enter")
 
                         try:
-                            pw_page.wait_for_selector("button:has-text('Detail'), .no-data, .empty-state, td:has-text('tidak ditemukan')", timeout=8000)
+                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=8000)
                         except Exception:
-                            pass
+                            entry['Jenis'] = 'Tidak ditemukan'
+                            entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
+                            entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
+                            return entry
 
                         detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
                         if not detail_btns:
@@ -949,22 +952,12 @@ with tab_hs:
 
                         entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
 
-                        pw_page.go_back(wait_until='domcontentloaded')
-                        try:
-                            pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=5000)
-                        except Exception:
-                            pw_page.goto(INSW_URL, timeout=15000, wait_until='domcontentloaded')
-                            pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=10000)
-
                         return entry
 
                     with sync_playwright() as pw:
                         pw_browser = pw.chromium.launch(headless=True)
                         pw_page = pw_browser.new_page()
                         pw_page.set_default_timeout(20000)
-
-                        pw_page.goto(INSW_URL, timeout=30000)
-                        pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
 
                         for idx_hs, hs_code in enumerate(codes_to_check):
                             progress_val = (idx_hs + 1) / len(codes_to_check)
@@ -989,12 +982,6 @@ with tab_hs:
                                     'Keterangan Impor': f'Error: {str(e_hs)[:80]}',
                                     'Keterangan Ekspor': '-',
                                 }
-                                try:
-                                    pw_page.goto(INSW_URL, timeout=15000, wait_until='domcontentloaded')
-                                    pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=10000)
-                                except Exception:
-                                    pass
-
                             insw_results.append(result_entry)
 
                         pw_browser.close()

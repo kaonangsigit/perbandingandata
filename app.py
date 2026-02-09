@@ -886,6 +886,46 @@ with tab_hs:
                                 'vaksin', 'vitamin', 'narkotik', 'psikotropik',
                                 'kuasi', 'prekursor', 'narkotika', 'psikotropika']
 
+                def format_hs_dotted(code):
+                    if len(code) == 8:
+                        return f"{code[:4]}.{code[4:6]}.{code[6:8]}"
+                    return code
+
+                def search_and_click_detail(pw_page, hs_code):
+                    search_queries = [hs_code, format_hs_dotted(hs_code)]
+                    for attempt, query in enumerate(search_queries):
+                        pw_page.goto(INSW_URL, timeout=30000, wait_until='domcontentloaded')
+                        search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
+                        search_input.fill(query)
+                        search_input.press("Enter")
+
+                        try:
+                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=10000)
+                        except Exception:
+                            continue
+
+                        body_text = pw_page.inner_text("body")
+                        if hs_code not in body_text:
+                            continue
+
+                        rows = pw_page.query_selector_all("tr")
+                        for row in rows:
+                            row_text = row.inner_text()
+                            if hs_code in row_text:
+                                detail_btn = row.query_selector("button:has-text('Detail')")
+                                if detail_btn:
+                                    detail_btn.click()
+                                    pw_page.wait_for_timeout(2500)
+                                    return True
+
+                        detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
+                        if detail_btns:
+                            detail_btns[0].click()
+                            pw_page.wait_for_timeout(2500)
+                            return True
+
+                    return False
+
                 def extract_insw_detail(pw_page, hs_code, desc_text=''):
                     entry = {
                         'HS Code': hs_code,
@@ -903,28 +943,12 @@ with tab_hs:
                         'Keterangan Ekspor': '-',
                     }
 
-                    pw_page.goto(INSW_URL, timeout=30000, wait_until='domcontentloaded')
-                    search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
-                    search_input.fill(hs_code)
-                    search_input.press("Enter")
-
-                    try:
-                        pw_page.wait_for_selector("button:has-text('Detail')", timeout=10000)
-                    except Exception:
+                    found = search_and_click_detail(pw_page, hs_code)
+                    if not found:
                         entry['Jenis'] = 'Tidak ditemukan'
                         entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
                         entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
                         return entry
-
-                    detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
-                    if not detail_btns:
-                        entry['Jenis'] = 'Tidak ditemukan'
-                        entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
-                        entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
-                        return entry
-
-                    detail_btns[0].click()
-                    pw_page.wait_for_timeout(2500)
 
                     pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
 

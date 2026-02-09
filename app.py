@@ -1119,8 +1119,8 @@ Respond ONLY with the JSON array, no other text."""
             st.markdown("### 🌐 Cek INSW Otomatis (Indonesia National Single Window)")
             st.markdown("Cek otomatis setiap HS Code di website INSW untuk mengetahui apakah barang tersebut memiliki **regulasi impor**, **regulasi ekspor**, atau terkait **bahan baku obat**.")
             
-            all_hs_codes_insw = list(dict.fromkeys([h['hs_code'] for h in hs_items]))
             all_hs_desc_map = {h['hs_code']: h['description'] for h in hs_items}
+            hs_codes_28_31 = list(dict.fromkeys([h['hs_code'] for h in hs_items if h['hs_code'][:2] in ('28', '29', '30', '31')]))
             
             playwright_available = False
             try:
@@ -1141,30 +1141,9 @@ Respond ONLY with the JSON array, no other text."""
                 if len(hs_items) > 200:
                     st.caption(f"Menampilkan 200 dari {len(hs_items)} HS Code")
             else:
-                st.info(f"Total **{len(all_hs_codes_insw)}** HS Code unik ditemukan dalam file.")
+                st.info(f"Ditemukan **{len(hs_codes_28_31)}** HS Code unik dengan awalan 28, 29, 30, 31 (Kimia & Farmasi) dari file.")
                 
-                insw_scope = st.radio(
-                    "Pilih HS Code yang akan dicek:",
-                    ["Semua HS Code", "Hanya Chapter 28-31 (Kimia & Farmasi)", "Pilih range sendiri"],
-                    horizontal=True,
-                    key="insw_scope"
-                )
-                
-                if insw_scope == "Semua HS Code":
-                    selected_hs_insw = all_hs_codes_insw
-                elif insw_scope == "Hanya Chapter 28-31 (Kimia & Farmasi)":
-                    selected_hs_insw = [h for h in all_hs_codes_insw if h[:2] in ('28', '29', '30', '31')]
-                else:
-                    col_range1, col_range2 = st.columns(2)
-                    with col_range1:
-                        start_idx = st.number_input("Dari urutan ke-", min_value=1, max_value=len(all_hs_codes_insw), value=1, key="insw_start", help="Urutan HS Code dalam file (bukan nomor HS)")
-                    with col_range2:
-                        end_idx = st.number_input("Sampai urutan ke-", min_value=1, max_value=len(all_hs_codes_insw), value=min(50, len(all_hs_codes_insw)), key="insw_end")
-                    selected_hs_insw = all_hs_codes_insw[start_idx-1:end_idx]
-                
-                max_batch = st.slider("Batas maksimal HS Code per sesi", min_value=10, max_value=500, value=min(100, len(selected_hs_insw)), step=10, key="insw_batch_limit")
-                
-                codes_to_check = selected_hs_insw[:max_batch]
+                codes_to_check = hs_codes_28_31
                 est_seconds = len(codes_to_check) * 8
                 est_minutes = max(1, est_seconds // 60)
                 
@@ -1383,18 +1362,42 @@ Respond ONLY with the JSON array, no other text."""
                 st.markdown("#### Detail Hasil Pengecekan INSW")
                 
                 filter_hs_prefix = st.multiselect(
-                    "🔎 Filter Hasil: Tampilkan HS Code dengan awalan",
+                    "🔎 Filter per Chapter:",
                     options=["28", "29", "30", "31"],
                     default=[],
                     key="insw_filter_prefix",
-                    help="Pilih satu atau lebih awalan HS Code untuk memfilter hasil. Kosongkan untuk menampilkan semua."
+                    help="Filter berdasarkan chapter. Kosongkan untuk menampilkan semua."
                 )
                 
+                filter_insw_type = st.multiselect(
+                    "🔎 Filter berdasarkan hasil:",
+                    options=["Ada Regulasi Impor", "Ada Regulasi Ekspor", "Terkait Obat", "Ada BPOM", "Tidak Ada Lartas"],
+                    default=[],
+                    key="insw_filter_type",
+                    help="Filter berdasarkan jenis regulasi. Kosongkan untuk menampilkan semua."
+                )
+                
+                df_insw_display = df_insw_results
+                
                 if filter_hs_prefix:
-                    df_insw_display = df_insw_results[df_insw_results['HS Code'].astype(str).str[:2].isin(filter_hs_prefix)]
-                    st.caption(f"Menampilkan {len(df_insw_display)} dari {len(df_insw_results)} HS Code (filter: awalan {', '.join(filter_hs_prefix)})")
-                else:
-                    df_insw_display = df_insw_results
+                    df_insw_display = df_insw_display[df_insw_display['HS Code'].astype(str).str[:2].isin(filter_hs_prefix)]
+                
+                if filter_insw_type:
+                    mask = pd.Series([False] * len(df_insw_display), index=df_insw_display.index)
+                    if "Ada Regulasi Impor" in filter_insw_type:
+                        mask = mask | (df_insw_display['Ada Regulasi Impor'] == 'YA')
+                    if "Ada Regulasi Ekspor" in filter_insw_type:
+                        mask = mask | (df_insw_display['Ada Regulasi Ekspor'] == 'YA')
+                    if "Terkait Obat" in filter_insw_type:
+                        mask = mask | (df_insw_display['Terkait Obat (INSW)'] == 'YA')
+                    if "Ada BPOM" in filter_insw_type:
+                        mask = mask | (df_insw_display['Ada BPOM'] == 'YA')
+                    if "Tidak Ada Lartas" in filter_insw_type:
+                        mask = mask | ((df_insw_display['Ada Regulasi Impor'] == 'Tidak') & (df_insw_display['Ada Regulasi Ekspor'] == 'Tidak'))
+                    df_insw_display = df_insw_display[mask]
+                
+                if filter_hs_prefix or filter_insw_type:
+                    st.caption(f"Menampilkan {len(df_insw_display)} dari {len(df_insw_results)} HS Code")
                 
                 def highlight_insw(row):
                     if row.get('Terkait Obat (INSW)') == 'YA':

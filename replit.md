@@ -44,8 +44,9 @@ Preferred communication style: Simple, everyday language.
 2. **Pandas for Data Processing**: Standard choice for Excel/tabular data manipulation in Python
 3. **Wide Layout**: Enables side-by-side comparison of datasets which is core to the application's purpose
 4. **INSW-only approach**: Removed keyword/AI classification in favor of direct INSW website scraping for accuracy
-5. **Background threading for INSW scraping**: Scraping runs in a daemon thread with thread-safe shared state (`_insw_shared_state` + `_insw_lock`), while main Streamlit thread polls every 3s for progress updates. This prevents WebSocket timeout/disconnection during long scraping sessions.
+5. **Background threading for INSW scraping**: Scraping runs in a daemon thread with file-based IPC (`/tmp/insw_{sid}.json`), while main Streamlit thread polls every 3s for progress updates. This prevents WebSocket timeout/disconnection during long scraping sessions. File-based state survives module reimports and process restarts (partial results preserved).
 6. **Dual format HS Code search**: Tries plain 8-digit format first, then dotted format (XXXX.XX.XX) if INSW doesn't find it
+7. **Heartbeat-based staleness detection**: Thread writes heartbeat timestamp on each update; polling detects stale heartbeats (>60s) to gracefully handle dead threads and show partial results
 
 ## External Dependencies
 

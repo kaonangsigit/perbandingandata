@@ -11,9 +11,36 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 import threading as _threading
-_insw_shared_state = {}
-_insw_lock = _threading.Lock()
+import json as _json
 _insw_threads = {}
+
+def _insw_state_path(sid):
+    return f"/tmp/insw_{sid}.json"
+
+def _write_insw_state(sid, state):
+    path = _insw_state_path(sid)
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, 'w') as f:
+            _json.dump(state, f)
+        os.rename(tmp_path, path)
+    except Exception as e:
+        logger.error(f"[INSW] Failed to write state file: {e}")
+
+def _read_insw_state(sid):
+    path = _insw_state_path(sid)
+    try:
+        with open(path, 'r') as f:
+            return _json.load(f)
+    except (FileNotFoundError, _json.JSONDecodeError, OSError):
+        return {}
+
+def _cleanup_insw_state(sid):
+    path = _insw_state_path(sid)
+    try:
+        os.remove(path)
+    except (FileNotFoundError, OSError):
+        pass
 
 def _setup_playwright_env():
     if os.environ.get('_PLAYWRIGHT_SETUP_DONE'):
@@ -895,15 +922,29 @@ with tab_hs:
                 def _run_insw_scraping(codes, desc_map, session_id):
                     import time as _time
 
+                    _file_state = {
+                        'results': [],
+                        'complete': False,
+                        'current': 0,
+                        'total': len(codes),
+                        'current_hs': '',
+                        'current_desc': '',
+                        'error_count': 0,
+                        'error_msg': '',
+                        'heartbeat': _time.time(),
+                        'status': 'running',
+                    }
+                    _write_insw_state(session_id, _file_state)
+
                     def _update_shared(key, value):
-                        with _insw_lock:
-                            if session_id in _insw_shared_state:
-                                _insw_shared_state[session_id][key] = value
+                        _file_state[key] = value
+                        _file_state['heartbeat'] = _time.time()
+                        _write_insw_state(session_id, _file_state)
 
                     def _update_shared_multi(updates):
-                        with _insw_lock:
-                            if session_id in _insw_shared_state:
-                                _insw_shared_state[session_id].update(updates)
+                        _file_state.update(updates)
+                        _file_state['heartbeat'] = _time.time()
+                        _write_insw_state(session_id, _file_state)
 
                     INSW_URL = "https://insw.go.id/intr/detail-komoditas"
                     OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
@@ -1123,6 +1164,7 @@ with tab_hs:
                             'results': results,
                             'complete': True,
                             'error_count': error_count,
+                            'status': 'completed',
                         })
                         logger.info(f"[INSW-Thread] Completed. {len(results)}/{len(codes)} checked, {error_count} errors")
 
@@ -1134,6 +1176,7 @@ with tab_hs:
                             'complete': True,
                             'error_msg': error_detail[:200],
                             'error_count': error_count,
+                            'status': 'error',
                         })
                         try:
                             if pw_browser:
@@ -1144,18 +1187,6 @@ with tab_hs:
                 import uuid
                 sid = str(uuid.uuid4())[:8]
                 st.session_state['insw_session_id'] = sid
-
-                with _insw_lock:
-                    _insw_shared_state[sid] = {
-                        'results': [],
-                        'complete': False,
-                        'current': 0,
-                        'total': len(codes_to_check),
-                        'current_hs': '',
-                        'current_desc': '',
-                        'error_count': 0,
-                        'error_msg': '',
-                    }
 
                 st.session_state['insw_thread_started'] = True
 
@@ -1172,13 +1203,14 @@ with tab_hs:
                 import time as _time
                 sid = st.session_state.get('insw_session_id', '')
 
-                with _insw_lock:
-                    shared = dict(_insw_shared_state.get(sid, {}))
-                    if 'results' in shared:
-                        shared['results'] = list(shared['results'])
+                shared = _read_insw_state(sid)
 
                 thread = _insw_threads.get(sid)
                 thread_alive = thread is not None and thread.is_alive()
+
+                file_status = shared.get('status', '')
+                heartbeat = shared.get('heartbeat', 0)
+                heartbeat_stale = (heartbeat > 0 and (_time.time() - heartbeat) > 60)
 
                 if not shared and not thread_alive:
                     st.session_state['insw_running'] = False
@@ -1190,14 +1222,16 @@ with tab_hs:
                 current = shared.get('current', 0)
                 current_hs = shared.get('current_hs', '')
                 current_desc = shared.get('current_desc', '')
-                is_complete = shared.get('complete', False)
+                is_complete = shared.get('complete', False) or file_status in ('completed', 'error')
                 partial_results = shared.get('results', [])
                 error_msg = shared.get('error_msg', '')
                 error_count = shared.get('error_count', 0)
 
-                if not is_complete and not thread_alive and current > 0:
+                if not is_complete and heartbeat_stale:
                     is_complete = True
-                    error_msg = error_msg or "Thread berhenti tidak terduga"
+                    partial_results = shared.get('results', [])
+                    error_msg = error_msg or "Proses scraping berhenti (tidak ada update selama 60 detik)"
+                    logger.warning(f"[INSW] Heartbeat stale for {sid}, marking complete with {len(partial_results)} partial results")
 
                 if not is_complete:
                     progress_val = current / total if total > 0 else 0
@@ -1220,8 +1254,7 @@ with tab_hs:
                     elif error_count > 0:
                         st.session_state['insw_error'] = f"Selesai! {len(partial_results)}/{total} HS Code dicek ({error_count} error)"
 
-                    with _insw_lock:
-                        _insw_shared_state.pop(sid, None)
+                    _cleanup_insw_state(sid)
                     _insw_threads.pop(sid, None)
 
                     st.rerun()

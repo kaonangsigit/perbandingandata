@@ -3,7 +3,54 @@ import pandas as pd
 import io
 import re
 import os
+import subprocess
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+def _setup_playwright_env():
+    if os.environ.get('_PLAYWRIGHT_SETUP_DONE'):
+        return
+
+    if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
+        gbm_lib_dir = None
+        try:
+            r = subprocess.run(["pkg-config", "--libs-only-L", "gbm"],
+                             capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip():
+                gbm_lib_dir = r.stdout.strip().replace("-L", "")
+        except Exception:
+            pass
+
+        if not gbm_lib_dir:
+            try:
+                r = subprocess.run(["nix-build", "<nixpkgs>", "-A", "libgbm", "--no-out-link"],
+                                 capture_output=True, text=True, timeout=30)
+                p = r.stdout.strip()
+                if p and os.path.exists(p + "/lib/libgbm.so.1"):
+                    gbm_lib_dir = p + "/lib"
+            except Exception:
+                pass
+
+        if gbm_lib_dir and os.path.isdir(gbm_lib_dir):
+            os.environ["LD_LIBRARY_PATH"] = gbm_lib_dir + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+
+    for bpath in [os.path.expanduser("~/.cache/ms-playwright"),
+                  os.path.join(os.getcwd(), ".cache/ms-playwright"),
+                  "/home/runner/workspace/.cache/ms-playwright"]:
+        if os.path.exists(bpath) and os.listdir(bpath):
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = bpath
+            break
+    else:
+        try:
+            bp = os.path.expanduser("~/.cache/ms-playwright")
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = bp
+            subprocess.run(["python3", "-m", "playwright", "install", "chromium"],
+                         capture_output=True, timeout=120, env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": bp})
+        except Exception:
+            pass
+
+    os.environ['_PLAYWRIGHT_SETUP_DONE'] = '1'
+
+_setup_playwright_env()
 
 st.set_page_config(
     page_title="Perbandingan Data Impor", 
@@ -770,18 +817,13 @@ with tab_hs:
             if 'playwright_available' not in st.session_state:
                 try:
                     from playwright.sync_api import sync_playwright as _pw_check
-                    if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
-                        import subprocess as _sp_gbm
-                        _gbm_r = _sp_gbm.run(["nix-build", "<nixpkgs>", "-A", "libgbm", "--no-out-link"], capture_output=True, text=True, timeout=30)
-                        _gbm_path = _gbm_r.stdout.strip()
-                        if _gbm_path and os.path.exists(_gbm_path + "/lib/libgbm.so.1"):
-                            os.environ["LD_LIBRARY_PATH"] = _gbm_path + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
                     with _pw_check() as _pw_test:
                         _test_browser = _pw_test.chromium.launch(headless=True)
                         _test_browser.close()
                         st.session_state['playwright_available'] = True
-                except Exception:
+                except Exception as _pw_err:
                     st.session_state['playwright_available'] = False
+                    st.session_state['playwright_error'] = str(_pw_err)
             playwright_available = st.session_state['playwright_available']
 
             btn_insw = False
@@ -820,13 +862,6 @@ with tab_hs:
                 status_text = st.empty()
 
                 try:
-                    if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
-                        import subprocess as sp_find
-                        gbm_r = sp_find.run(["nix-build", "<nixpkgs>", "-A", "libgbm", "--no-out-link"], capture_output=True, text=True, timeout=30)
-                        gbm_store_path = gbm_r.stdout.strip()
-                        if gbm_store_path and os.path.exists(gbm_store_path + "/lib/libgbm.so.1"):
-                            os.environ["LD_LIBRARY_PATH"] = gbm_store_path + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
-
                     from playwright.sync_api import sync_playwright
 
                     INSW_URL = "https://insw.go.id/intr/detail-komoditas"

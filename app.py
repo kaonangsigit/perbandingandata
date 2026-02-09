@@ -1136,10 +1136,11 @@ Respond ONLY with the JSON array, no other text."""
             if not playwright_available:
                 st.warning("Browser otomatis (Playwright/Chromium) tidak tersedia. Gunakan link berikut untuk cek manual.")
                 st.markdown(f"[Buka INSW Detail Komoditas](https://insw.go.id/intr/detail-komoditas)")
-                insw_manual_data = [{'No': i+1, 'HS Code': h['hs_code'], 'Deskripsi': h['description']} for i, h in enumerate(hs_items[:200])]
+                insw_manual_items = [h for h in hs_items if h['hs_code'][:2] in ('28', '29', '30', '31')]
+                insw_manual_data = [{'No': i+1, 'HS Code': h['hs_code'], 'Deskripsi': h['description']} for i, h in enumerate(insw_manual_items[:200])]
                 st.dataframe(pd.DataFrame(insw_manual_data), use_container_width=True, height=300)
-                if len(hs_items) > 200:
-                    st.caption(f"Menampilkan 200 dari {len(hs_items)} HS Code")
+                if len(insw_manual_items) > 200:
+                    st.caption(f"Menampilkan 200 dari {len(insw_manual_items)} HS Code (Chapter 28-31)")
             else:
                 st.info(f"Ditemukan **{len(hs_codes_28_31)}** HS Code unik dengan awalan 28, 29, 30, 31 (Kimia & Farmasi) dari file.")
                 

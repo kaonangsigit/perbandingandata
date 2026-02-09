@@ -21,7 +21,14 @@ Preferred communication style: Simple, everyday language.
 ### Data Processing
 - **Data Handling**: Pandas for Excel file parsing and data manipulation
 - **File Format Support**: Excel files (.xlsx, .xls)
-- **Comparison Logic**: Currently shows preview of both datasets; full comparison logic to be implemented
+- **Comparison Logic**: Compares data between File Tarikan and File Data Anda based on user-selected columns, with symbol cleaning
+
+### Features
+1. **Perbandingan Data** (Tab 1): Compare import realization data between system files and user data
+2. **Cek HS Code Obat** (Tab 2): HS Code pharmaceutical classification with two methods:
+   - **Keyword (Offline)**: Fast, no cost, uses pre-defined keyword lists
+   - **AI / ChatGPT (Online)**: More accurate, uses OpenAI (gpt-5-nano) to classify each HS Code via Replit AI Integrations
+3. **Analisis Data** (Tab 3): Data analysis features
 
 ### Application Entry Points
 - `app.py`: Main Streamlit application (run with `streamlit run app.py`)
@@ -31,6 +38,7 @@ Preferred communication style: Simple, everyday language.
 1. **Streamlit over Flask/Django**: Chosen for rapid prototyping of data-centric applications with minimal frontend code
 2. **Pandas for Data Processing**: Standard choice for Excel/tabular data manipulation in Python
 3. **Wide Layout**: Enables side-by-side comparison of datasets which is core to the application's purpose
+4. **AI Classification**: Uses gpt-5-nano for cost efficiency; batch processing (30 items/batch) with fallback to keyword if AI fails
 
 ## External Dependencies
 
@@ -38,13 +46,14 @@ Preferred communication style: Simple, everyday language.
 - **streamlit**: Web application framework for data apps
 - **pandas**: Data manipulation and Excel file reading
 - **openpyxl** (implicit): Required by pandas for .xlsx file support
+- **openai**: OpenAI API client for AI-powered HS Code classification
 
 ### File I/O
 - Excel file uploads handled via Streamlit's file_uploader component
 - In-memory processing using pandas read_excel
+- BPS files read with dtype=str to avoid mixed-type column issues
 
-### No External Services
+### External Services
+- **OpenAI via Replit AI Integrations**: Used for HS Code pharmaceutical classification (env vars: AI_INTEGRATIONS_OPENAI_API_KEY, AI_INTEGRATIONS_OPENAI_BASE_URL)
 - No database connections
-- No external APIs
 - No authentication systems
-- Fully client-side data processing (files are processed in memory)

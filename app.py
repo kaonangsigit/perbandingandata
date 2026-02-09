@@ -770,6 +770,12 @@ with tab_hs:
             if 'playwright_available' not in st.session_state:
                 try:
                     from playwright.sync_api import sync_playwright as _pw_check
+                    if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
+                        import subprocess as _sp_gbm
+                        _gbm_r = _sp_gbm.run(["nix-build", "<nixpkgs>", "-A", "libgbm", "--no-out-link"], capture_output=True, text=True, timeout=30)
+                        _gbm_path = _gbm_r.stdout.strip()
+                        if _gbm_path and os.path.exists(_gbm_path + "/lib/libgbm.so.1"):
+                            os.environ["LD_LIBRARY_PATH"] = _gbm_path + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
                     with _pw_check() as _pw_test:
                         _test_browser = _pw_test.chromium.launch(headless=True)
                         _test_browser.close()
@@ -815,15 +821,11 @@ with tab_hs:
 
                 try:
                     if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
-                        known_gbm = "/nix/store/24w3s75aa2lrvvxsybficn8y3zxd27kp-mesa-libgbm-25.1.0/lib"
-                        if os.path.exists(known_gbm + "/libgbm.so.1"):
-                            os.environ["LD_LIBRARY_PATH"] = known_gbm + ":" + os.environ.get("LD_LIBRARY_PATH", "")
-                        else:
-                            import subprocess as sp_find
-                            gbm_r = sp_find.run(["find", "/nix/store", "-name", "libgbm.so.1", "-maxdepth", "3"], capture_output=True, text=True, timeout=10)
-                            gbm_paths = [p.rsplit("/", 1)[0] for p in gbm_r.stdout.strip().split("\n") if p]
-                            if gbm_paths:
-                                os.environ["LD_LIBRARY_PATH"] = gbm_paths[0] + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+                        import subprocess as sp_find
+                        gbm_r = sp_find.run(["nix-build", "<nixpkgs>", "-A", "libgbm", "--no-out-link"], capture_output=True, text=True, timeout=30)
+                        gbm_store_path = gbm_r.stdout.strip()
+                        if gbm_store_path and os.path.exists(gbm_store_path + "/lib/libgbm.so.1"):
+                            os.environ["LD_LIBRARY_PATH"] = gbm_store_path + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
 
                     from playwright.sync_api import sync_playwright
 

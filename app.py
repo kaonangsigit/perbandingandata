@@ -4,7 +4,11 @@ import io
 import re
 import os
 import subprocess
+import logging
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def _setup_playwright_env():
     if os.environ.get('_PLAYWRIGHT_SETUP_DONE'):
@@ -894,38 +898,48 @@ with tab_hs:
                 def search_and_click_detail(pw_page, hs_code):
                     search_queries = [hs_code, format_hs_dotted(hs_code)]
                     for attempt, query in enumerate(search_queries):
-                        pw_page.goto(INSW_URL, timeout=30000, wait_until='domcontentloaded')
-                        pw_page.wait_for_timeout(1000)
-                        search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
-                        search_input.fill(query)
-                        search_input.press("Enter")
-
                         try:
-                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=15000)
-                        except Exception:
+                            logger.info(f"[INSW] Searching {hs_code} with query '{query}' (attempt {attempt+1})")
+                            pw_page.goto(INSW_URL, timeout=60000, wait_until='domcontentloaded')
+                            pw_page.wait_for_timeout(2000)
+                            search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=20000)
+                            search_input.fill(query)
+                            search_input.press("Enter")
+
+                            try:
+                                pw_page.wait_for_selector("button:has-text('Detail')", timeout=20000)
+                            except Exception:
+                                logger.info(f"[INSW] No Detail button found for query '{query}'")
+                                continue
+
+                            pw_page.wait_for_timeout(1500)
+                            body_text = pw_page.inner_text("body")
+                            if hs_code not in body_text:
+                                logger.info(f"[INSW] HS code {hs_code} not in search results for query '{query}'")
+                                continue
+
+                            rows = pw_page.query_selector_all("tr")
+                            for row in rows:
+                                row_text = row.inner_text()
+                                if hs_code in row_text:
+                                    detail_btn = row.query_selector("button:has-text('Detail')")
+                                    if detail_btn:
+                                        detail_btn.click()
+                                        pw_page.wait_for_timeout(3000)
+                                        logger.info(f"[INSW] Clicked Detail for {hs_code}")
+                                        return True
+
+                            detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
+                            if detail_btns:
+                                detail_btns[0].click()
+                                pw_page.wait_for_timeout(3000)
+                                logger.info(f"[INSW] Clicked first Detail button for {hs_code}")
+                                return True
+                        except Exception as e:
+                            logger.error(f"[INSW] Error searching {hs_code} with query '{query}': {str(e)[:100]}")
                             continue
 
-                        pw_page.wait_for_timeout(1000)
-                        body_text = pw_page.inner_text("body")
-                        if hs_code not in body_text:
-                            continue
-
-                        rows = pw_page.query_selector_all("tr")
-                        for row in rows:
-                            row_text = row.inner_text()
-                            if hs_code in row_text:
-                                detail_btn = row.query_selector("button:has-text('Detail')")
-                                if detail_btn:
-                                    detail_btn.click()
-                                    pw_page.wait_for_timeout(2500)
-                                    return True
-
-                        detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
-                        if detail_btns:
-                            detail_btns[0].click()
-                            pw_page.wait_for_timeout(2500)
-                            return True
-
+                    logger.warning(f"[INSW] {hs_code} not found with any format")
                     return False
 
                 def extract_insw_detail(pw_page, hs_code, desc_text=''):
@@ -1036,18 +1050,28 @@ with tab_hs:
 
                 pw_browser = None
                 error_count = 0
-                max_retries = 2
+                max_retries = 3
+
+                BROWSER_ARGS = [
+                    '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+                    '--single-process', '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-software-rasterizer',
+                    '--disable-translate',
+                    '--no-first-run',
+                    '--no-zygote',
+                ]
 
                 try:
                     with sync_playwright() as pw:
+                        logger.info("[INSW] Launching Chromium browser...")
                         pw_browser = pw.chromium.launch(
                             headless=True,
-                            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-                                  '--single-process', '--disable-extensions',
-                                  '--disable-background-networking']
+                            args=BROWSER_ARGS
                         )
                         pw_page = pw_browser.new_page()
-                        pw_page.set_default_timeout(30000)
+                        pw_page.set_default_timeout(60000)
+                        logger.info("[INSW] Browser launched successfully")
 
                         for idx_hs, hs_code in enumerate(codes_to_check):
                             progress_val = (idx_hs + 1) / len(codes_to_check)
@@ -1061,31 +1085,33 @@ with tab_hs:
                                     result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
                                     break
                                 except Exception as e_hs:
-                                    last_error_msg = str(e_hs)[:80]
+                                    last_error_msg = str(e_hs)[:120]
+                                    logger.error(f"[INSW] Error on {hs_code} retry {retry}: {last_error_msg}")
                                     if retry < max_retries:
                                         try:
                                             pw_page.close()
                                         except Exception:
                                             pass
                                         try:
-                                            pw_page = pw_browser.new_page()
-                                            pw_page.set_default_timeout(30000)
+                                            pw_browser.close()
                                         except Exception:
-                                            try:
-                                                pw_browser.close()
-                                            except Exception:
-                                                pass
-                                            try:
-                                                pw_browser = pw.chromium.launch(
-                                                    headless=True,
-                                                    args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-                                                          '--single-process', '--disable-extensions']
-                                                )
-                                                pw_page = pw_browser.new_page()
-                                                pw_page.set_default_timeout(30000)
-                                            except Exception as e_launch:
-                                                last_error_msg = f'Browser error: {str(e_launch)[:60]}'
-                                                break
+                                            pass
+                                        try:
+                                            pw_page.wait_for_timeout(2000)
+                                        except Exception:
+                                            import time; time.sleep(2)
+                                        try:
+                                            pw_browser = pw.chromium.launch(
+                                                headless=True,
+                                                args=BROWSER_ARGS
+                                            )
+                                            pw_page = pw_browser.new_page()
+                                            pw_page.set_default_timeout(60000)
+                                            logger.info(f"[INSW] Browser restarted for retry {retry+1}")
+                                        except Exception as e_launch:
+                                            last_error_msg = f'Browser restart error: {str(e_launch)[:80]}'
+                                            logger.error(f"[INSW] {last_error_msg}")
+                                            break
 
                             if result_entry is None:
                                 error_count += 1
@@ -1122,12 +1148,19 @@ with tab_hs:
                     st.rerun()
 
                 except Exception as e_insw:
+                    error_detail = str(e_insw)
+                    logger.error(f"[INSW] Fatal error: {error_detail}")
                     if insw_temp_results:
                         st.session_state['insw_results'] = insw_temp_results
                         st.session_state['insw_complete'] = True
-                        st.session_state['insw_error'] = f"Proses terhenti setelah {len(insw_temp_results)} HS Code. Error: {str(e_insw)[:100]}"
+                        st.session_state['insw_error'] = f"Proses terhenti setelah {len(insw_temp_results)} HS Code. Error: {error_detail[:150]}"
                     else:
-                        st.session_state['insw_error'] = f"Error saat mengakses INSW: {str(e_insw)}"
+                        if 'Executable doesn' in error_detail or 'browser' in error_detail.lower():
+                            st.session_state['insw_error'] = f"Browser Chromium tidak dapat dijalankan. Silakan coba lagi atau hubungi admin. Detail: {error_detail[:120]}"
+                        elif 'timeout' in error_detail.lower() or 'Timeout' in error_detail:
+                            st.session_state['insw_error'] = f"Koneksi ke INSW timeout. Website INSW mungkin sedang lambat. Silakan coba lagi. Detail: {error_detail[:120]}"
+                        else:
+                            st.session_state['insw_error'] = f"Error saat mengakses INSW: {error_detail[:150]}"
                     st.session_state['insw_running'] = False
                     try:
                         if pw_browser:

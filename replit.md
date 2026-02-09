@@ -28,6 +28,12 @@ Preferred communication style: Simple, everyday language.
 2. **Cek HS Code Obat** (Tab 2): HS Code pharmaceutical classification with two methods:
    - **Keyword (Offline)**: Fast, no cost, uses pre-defined keyword lists
    - **AI / ChatGPT (Online)**: More accurate, uses OpenAI (gpt-5-nano) to classify each HS Code via Replit AI Integrations
+   - **Cek INSW Otomatis**: Uses Playwright headless browser to scrape INSW (insw.go.id/intr/detail-komoditas) for each HS code, extracting:
+     - Whether import regulations exist (Regulasi Impor / Lartas Border / Tata Niaga Post Border)
+     - Whether export regulations exist (Regulasi Ekspor / Lartas Ekspor)
+     - Komoditi classification from INSW (e.g., Obat, Obat Bahan Alam, Bahan Suplemen Kesehatan, Narkotika, etc.)
+     - Whether the HS code is related to medicine/pharmaceuticals based on INSW data
+     - BPOM regulation presence
 3. **Analisis Data** (Tab 3): Data analysis features
 
 ### Application Entry Points
@@ -47,6 +53,7 @@ Preferred communication style: Simple, everyday language.
 - **pandas**: Data manipulation and Excel file reading
 - **openpyxl** (implicit): Required by pandas for .xlsx file support
 - **openai**: OpenAI API client for AI-powered HS Code classification
+- **playwright**: Headless browser automation for INSW website scraping (requires chromium + mesa-libgbm system dep)
 
 ### File I/O
 - Excel file uploads handled via Streamlit's file_uploader component

@@ -1117,46 +1117,284 @@ Respond ONLY with the JSON array, no other text."""
             
             st.markdown("---")
             st.markdown("### 🌐 Cek di INSW (Indonesia National Single Window)")
-            st.markdown("""
-            Untuk memverifikasi apakah HS Code memiliki **satuan barang ekspor/impor**, 
-            Anda dapat mengecek langsung di website INSW. Klik link di bawah untuk membuka 
-            halaman detail komoditas INSW, lalu cari HS Code yang ingin dicek.
-            """)
+            st.markdown("Cek otomatis setiap HS Code di website INSW untuk mengetahui **regulasi impor/ekspor** dan **klasifikasi komoditi** (obat, bahan baku obat, dll).")
             
-            st.warning("⚠️ **Catatan:** Website INSW memerlukan login untuk akses API, sehingga pengecekan otomatis tidak tersedia. Silakan cek secara manual dengan mengklik link di bawah.")
+            unique_hs_codes = list(dict.fromkeys([r['HS Code'] for r in results]))
             
-            insw_base_url = "https://insw.go.id/intr/detail-komoditas"
+            playwright_available = False
+            try:
+                from playwright.sync_api import sync_playwright as _pw_check
+                known_gbm = "/nix/store/24w3s75aa2lrvvxsybficn8y3zxd27kp-mesa-libgbm-25.1.0/lib"
+                chromium_path = os.path.expanduser("~/.cache/ms-playwright")
+                if os.path.exists(chromium_path) and (os.path.exists(known_gbm + "/libgbm.so.1") or 'libgbm' in os.environ.get("LD_LIBRARY_PATH", "")):
+                    playwright_available = True
+            except ImportError:
+                pass
             
-            st.markdown(f"🔗 **Buka halaman INSW:** [Detail Komoditas INSW]({insw_base_url})")
+            btn_insw = False
+            if not playwright_available:
+                st.warning("⚠️ Browser otomatis (Playwright/Chromium) tidak tersedia. Hanya mode manual yang bisa digunakan.")
+                st.markdown(f"🔗 **Cek manual di INSW:** [Detail Komoditas INSW](https://insw.go.id/intr/detail-komoditas)")
+                insw_manual_data = []
+                for r in results:
+                    insw_manual_data.append({
+                        'HS Code': r['HS Code'],
+                        'Deskripsi': r.get('Deskripsi (English)', ''),
+                        'Klasifikasi': r.get('Kategori', ''),
+                    })
+                st.dataframe(pd.DataFrame(insw_manual_data), use_container_width=True, height=300)
+            else:
+                est_minutes = max(1, len(unique_hs_codes) * 10 // 60)
+                st.info(f"Total **{len(unique_hs_codes)}** HS Code unik akan dicek di INSW. Estimasi waktu: **~{est_minutes} menit** (~10 detik per HS Code).")
+                
+                col_insw1, col_insw2, col_insw3 = st.columns([1, 2, 1])
+                with col_insw2:
+                    btn_insw = st.button("🔍 Mulai Cek INSW Otomatis", type="primary", use_container_width=True, key="btn_insw")
             
-            st.markdown("#### 📋 Daftar HS Code untuk Dicek di INSW")
-            st.caption("Klik HS Code di kolom 'Link INSW' untuk membuka halaman pencarian INSW")
-            
-            insw_data = []
-            for r in results:
-                hs = r['HS Code']
-                insw_data.append({
-                    'HS Code': hs,
-                    'Deskripsi': r.get('Deskripsi (English)', ''),
-                    'Klasifikasi': r.get('Kategori', ''),
-                    'Obat?': r.get('Masuk Obat/Bahan Obat', ''),
-                })
-            
-            df_insw = pd.DataFrame(insw_data)
-            st.dataframe(df_insw, use_container_width=True, height=300)
-            
-            insw_txt = "Daftar HS Code untuk dicek di INSW:\n\n"
-            insw_txt += f"Link INSW: {insw_base_url}\n\n"
-            for r in results:
-                insw_txt += f"HS Code: {r['HS Code']} - {r.get('Deskripsi (English)', '')}\n"
-            
-            st.download_button(
-                label="📥 Download Daftar HS Code (TXT)",
-                data=insw_txt,
-                file_name="daftar_hs_code_insw.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
+            if playwright_available and btn_insw:
+                insw_results = []
+                progress_insw = st.progress(0)
+                status_text = st.empty()
+                
+                try:
+                    if 'libgbm' not in os.environ.get("LD_LIBRARY_PATH", ""):
+                        known_gbm = "/nix/store/24w3s75aa2lrvvxsybficn8y3zxd27kp-mesa-libgbm-25.1.0/lib"
+                        if os.path.exists(known_gbm + "/libgbm.so.1"):
+                            os.environ["LD_LIBRARY_PATH"] = known_gbm + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+                        else:
+                            import subprocess as sp_find
+                            gbm_r = sp_find.run(["find", "/nix/store", "-name", "libgbm.so.1", "-maxdepth", "3"], capture_output=True, text=True, timeout=10)
+                            gbm_paths = [p.rsplit("/", 1)[0] for p in gbm_r.stdout.strip().split("\n") if p]
+                            if gbm_paths:
+                                os.environ["LD_LIBRARY_PATH"] = gbm_paths[0] + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+                    
+                    from playwright.sync_api import sync_playwright
+                    import time as time_mod
+                    
+                    INSW_URL = "https://insw.go.id/intr/detail-komoditas"
+                    OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
+                                    'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
+                                    'vaksin', 'vitamin', 'narkotik', 'psikotropik']
+                    
+                    def extract_insw_detail(pw_page, hs_code):
+                        entry = {
+                            'HS Code': hs_code,
+                            'Ada Regulasi Impor': 'Tidak',
+                            'Ada Regulasi Ekspor': 'Tidak',
+                            'Komoditi INSW': '-',
+                            'Terkait Obat (INSW)': 'Tidak',
+                            'Keterangan INSW': '-'
+                        }
+                        
+                        pw_page.goto(INSW_URL, timeout=30000)
+                        pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
+                        
+                        search_input = pw_page.query_selector("input[placeholder='Cari kode HS / Uraian HS']")
+                        search_input.fill(hs_code)
+                        search_input.press("Enter")
+                        
+                        time_mod.sleep(3)
+                        pw_page.wait_for_timeout(2000)
+                        
+                        detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
+                        if not detail_btns:
+                            entry['Keterangan INSW'] = 'Tidak ditemukan di INSW'
+                            return entry
+                        
+                        detail_btns[0].click()
+                        time_mod.sleep(3)
+                        pw_page.wait_for_timeout(2000)
+                        
+                        pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        time_mod.sleep(1)
+                        
+                        body = pw_page.inner_text("body")
+                        
+                        has_import = "Regulasi Impor" in body
+                        has_export = "Regulasi Ekspor" in body
+                        
+                        entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
+                        entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
+                        
+                        komoditi_list = []
+                        is_obat = False
+                        keterangan_parts = []
+                        
+                        lines = body.split('\n')
+                        for li, line in enumerate(lines):
+                            stripped = line.strip()
+                            if stripped == 'Komoditi':
+                                for offset in range(1, 5):
+                                    if li + offset < len(lines):
+                                        next_line = lines[li + offset].strip()
+                                        if next_line.startswith('[') and next_line.endswith(']'):
+                                            komoditi_val = next_line[1:-1]
+                                            if komoditi_val not in komoditi_list:
+                                                komoditi_list.append(komoditi_val)
+                                            break
+                                        elif next_line == ':':
+                                            continue
+                                        elif next_line and next_line not in ('Regulasi', 'Deskripsi', ''):
+                                            break
+                        
+                        if komoditi_list:
+                            entry['Komoditi INSW'] = '; '.join(komoditi_list)
+                            for k_val in komoditi_list:
+                                for ok in OBAT_KEYWORDS:
+                                    if ok in k_val.lower():
+                                        is_obat = True
+                                        break
+                        
+                        if 'Bahan Obat' in body or 'bahan baku obat' in body.lower():
+                            is_obat = True
+                            keterangan_parts.append('Terkait Bahan Obat (dari regulasi)')
+                        
+                        if 'BPOM' in body:
+                            keterangan_parts.append('Ada regulasi BPOM')
+                        
+                        if has_import and has_export:
+                            keterangan_parts.insert(0, 'Impor & Ekspor')
+                        elif has_import:
+                            keterangan_parts.insert(0, 'Hanya Impor')
+                        elif has_export:
+                            keterangan_parts.insert(0, 'Hanya Ekspor')
+                        else:
+                            keterangan_parts.insert(0, 'Tidak ada lartas')
+                        
+                        entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
+                        entry['Keterangan INSW'] = '; '.join(keterangan_parts) if keterangan_parts else '-'
+                        
+                        return entry
+                    
+                    with sync_playwright() as pw:
+                        pw_browser = pw.chromium.launch(headless=True)
+                        pw_page = pw_browser.new_page()
+                        pw_page.set_default_timeout(20000)
+                        
+                        for idx_hs, hs_code in enumerate(unique_hs_codes):
+                            progress_val = (idx_hs + 1) / len(unique_hs_codes)
+                            progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(unique_hs_codes)})...")
+                            status_text.text(f"Sedang memproses: {hs_code}")
+                            
+                            try:
+                                result_entry = extract_insw_detail(pw_page, hs_code)
+                            except Exception as e_hs:
+                                result_entry = {
+                                    'HS Code': hs_code,
+                                    'Ada Regulasi Impor': 'Tidak',
+                                    'Ada Regulasi Ekspor': 'Tidak',
+                                    'Komoditi INSW': '-',
+                                    'Terkait Obat (INSW)': 'Tidak',
+                                    'Keterangan INSW': f'Error: {str(e_hs)[:80]}'
+                                }
+                            
+                            insw_results.append(result_entry)
+                        
+                        pw_browser.close()
+                    
+                    progress_insw.progress(1.0, text="Selesai!")
+                    status_text.text("Pengecekan INSW selesai!")
+                    
+                except Exception as e_insw:
+                    st.error(f"Error saat mengakses INSW: {str(e_insw)}")
+                    status_text.text("Terjadi error saat mengakses INSW")
+                
+                if insw_results:
+                    df_insw_results = pd.DataFrame(insw_results)
+                    
+                    insw_obat_count = len(df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA'])
+                    insw_impor_count = len(df_insw_results[df_insw_results['Ada Regulasi Impor'] == 'YA'])
+                    insw_ekspor_count = len(df_insw_results[df_insw_results['Ada Regulasi Ekspor'] == 'YA'])
+                    
+                    st.markdown("#### 📊 Ringkasan Hasil INSW")
+                    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+                    with col_r1:
+                        st.metric("Total Dicek", len(insw_results))
+                    with col_r2:
+                        st.metric("Ada Regulasi Impor", insw_impor_count)
+                    with col_r3:
+                        st.metric("Ada Regulasi Ekspor", insw_ekspor_count)
+                    with col_r4:
+                        st.metric("Terkait Obat (INSW)", insw_obat_count)
+                    
+                    st.markdown("#### 📋 Detail Hasil Pengecekan INSW")
+                    
+                    def highlight_insw(row):
+                        if row.get('Terkait Obat (INSW)') == 'YA':
+                            return ['background-color: #dcfce7'] * len(row)
+                        elif row.get('Ada Regulasi Ekspor') == 'YA':
+                            return ['background-color: #fef3c7'] * len(row)
+                        return [''] * len(row)
+                    
+                    styled_insw = df_insw_results.style.apply(highlight_insw, axis=1)
+                    st.dataframe(styled_insw, use_container_width=True, height=400)
+                    
+                    tab_insw_all, tab_insw_obat, tab_insw_ekspor = st.tabs(["📋 Semua", "💊 Terkait Obat", "📤 Ada Ekspor"])
+                    
+                    with tab_insw_all:
+                        st.dataframe(df_insw_results, use_container_width=True, height=300)
+                    
+                    with tab_insw_obat:
+                        df_insw_obat = df_insw_results[df_insw_results['Terkait Obat (INSW)'] == 'YA']
+                        if len(df_insw_obat) > 0:
+                            st.dataframe(df_insw_obat, use_container_width=True, height=300)
+                        else:
+                            st.info("Tidak ada HS Code yang terkait obat menurut INSW")
+                    
+                    with tab_insw_ekspor:
+                        df_insw_eks = df_insw_results[df_insw_results['Ada Regulasi Ekspor'] == 'YA']
+                        if len(df_insw_eks) > 0:
+                            st.dataframe(df_insw_eks, use_container_width=True, height=300)
+                        else:
+                            st.info("Tidak ada HS Code yang memiliki regulasi ekspor")
+                    
+                    output_insw = io.BytesIO()
+                    with pd.ExcelWriter(output_insw, engine='openpyxl') as writer:
+                        header_fill_insw = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                        header_font_insw = Font(bold=True, color='FFFFFF')
+                        green_fill_insw = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+                        yellow_fill_insw = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                        thin_border_insw = Border(
+                            left=Side(style='thin'), right=Side(style='thin'),
+                            top=Side(style='thin'), bottom=Side(style='thin')
+                        )
+                        
+                        df_insw_results.to_excel(writer, index=False, sheet_name='Hasil Cek INSW')
+                        ws_insw = writer.sheets['Hasil Cek INSW']
+                        
+                        for col_idx in range(1, len(df_insw_results.columns) + 1):
+                            cell = ws_insw.cell(row=1, column=col_idx)
+                            cell.fill = header_fill_insw
+                            cell.font = header_font_insw
+                            cell.alignment = Alignment(horizontal='center')
+                            cell.border = thin_border_insw
+                        
+                        obat_col = list(df_insw_results.columns).index('Terkait Obat (INSW)') + 1
+                        ekspor_col = list(df_insw_results.columns).index('Ada Regulasi Ekspor') + 1
+                        
+                        for row_idx in range(2, len(df_insw_results) + 2):
+                            obat_val = ws_insw.cell(row=row_idx, column=obat_col).value
+                            ekspor_val = ws_insw.cell(row=row_idx, column=ekspor_col).value
+                            for col_idx in range(1, len(df_insw_results.columns) + 1):
+                                cell = ws_insw.cell(row=row_idx, column=col_idx)
+                                cell.border = thin_border_insw
+                                if obat_val == 'YA':
+                                    cell.fill = green_fill_insw
+                                elif ekspor_val == 'YA':
+                                    cell.fill = yellow_fill_insw
+                        
+                        for col_idx, col in enumerate(df_insw_results.columns, 1):
+                            max_len = max(df_insw_results[col].astype(str).apply(len).max(), len(str(col))) + 2
+                            ws_insw.column_dimensions[ws_insw.cell(row=1, column=col_idx).column_letter].width = min(max_len, 60)
+                    
+                    output_insw.seek(0)
+                    st.download_button(
+                        label="📥 Download Hasil Cek INSW (Excel)",
+                        data=output_insw,
+                        file_name="hasil_cek_insw.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
             
             st.markdown("---")
             st.info("**Catatan:** Klasifikasi otomatis berdasarkan deskripsi HS Code. Untuk verifikasi lebih lanjut, cek di [INSW INTR](https://insw.go.id/intr/detail-komoditas)")

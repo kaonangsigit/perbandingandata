@@ -79,7 +79,7 @@ st.markdown("""
 st.markdown('<p class="main-header">📊 Perbandingan Data Realisasi Impor</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">Aplikasi untuk membandingkan dan menganalisis data impor dengan mudah</p>', unsafe_allow_html=True)
 
-tab_main, tab_analysis = st.tabs(["📋 Perbandingan Data", "📈 Analisis Data"])
+tab_main, tab_hs, tab_analysis = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data"])
 
 def clean_value(value):
     if pd.isna(value):
@@ -674,6 +674,328 @@ with tab_main:
 
     else:
         st.info("👆 Silakan upload **File Tarikan** dan **File Data Anda** untuk memulai perbandingan.")
+
+with tab_hs:
+    st.markdown("### 💊 Pengecekan HS Code Obat/Bahan Baku Obat")
+    st.markdown("Upload file data ekspor/impor dari BPS untuk filter HS Code yang termasuk obat/bahan baku obat.")
+    
+    with st.expander("📖 Petunjuk Penggunaan", expanded=False):
+        st.markdown("""
+        1. Upload file data dari **BPS** (format .xlsx/.xls)
+        2. Sistem akan **otomatis filter** HS Code awalan 28, 29, 30, 31
+        3. Klasifikasi otomatis mana yang **benar-benar masuk obat/bahan baku obat**
+        4. Kolom **HS Code** dan **Nama Bahan Baku Obat/Obat** akan terisi otomatis
+        5. Download hasil dalam format Excel
+        
+        **Kategori HS Code:**
+        - **28**: Bahan kimia anorganik (sebagian bahan baku obat)
+        - **29**: Bahan kimia organik (banyak bahan baku obat)
+        - **30**: Produk farmasi (semua termasuk obat)
+        - **31**: Pupuk (umumnya bukan obat)
+        """)
+    
+    PHARMA_KEYWORDS = [
+        'medic', 'pharma', 'drug', 'vaccine', 'antibiotic', 'vitamin',
+        'hormone', 'insulin', 'steroid', 'alkaloid', 'glycoside',
+        'analges', 'antisep', 'anaesthe', 'antipyr', 'antimal',
+        'anthelm', 'contracepti', 'prophylac', 'therapeutic',
+        'surgical', 'first-aid', 'dressing', 'bandage', 'catgut',
+        'quinine', 'sulphonamide', 'saccharin', 'sucralose',
+        'lysine', 'glutam', 'amino acid', 'nucleic acid',
+        'provitamin', 'penicillin', 'streptomycin', 'erythromycin',
+        'tetracycline', 'chloramphenicol', 'aspirin', 'paracetamol',
+        'acetylsalicylic', 'ibuprofen', 'caffeine', 'ephedrine',
+        'pseudoephedrine', 'codeine', 'morphine', 'herbal medic',
+        'immunolog', 'serum', 'toxin', 'antitoxin',
+        'cancer', 'tumour', 'tumor', 'intractable',
+        'sodium chloride', 'glucose', 'infusion',
+        'isoniazid', 'chlorpheniramine', 'mebendazole', 'parbendazole',
+        'hydantoin', 'lactam', 'imidazole',
+    ]
+    
+    PHARMA_RAW_KEYWORDS_28 = [
+        'zinc oxide', 'aluminium hydroxide', 'hydrogen peroxide',
+        'sodium hydroxide', 'calcium', 'phosphat',
+        'ammonia', 'oxygen', 'carbon dioxide', 'silicon dioxide',
+        'sodium sulphite', 'potassium', 'magnesium',
+        'iodine', 'iodide', 'bromide', 'fluoride',
+        'ferrous', 'ferric', 'iron oxide',
+        'manganese', 'copper sulphate', 'boric acid',
+        'sodium bicarbonate', 'sodium carbonate',
+        'calcium carbonate', 'magnesium oxide',
+        'magnesium hydroxide', 'titanium dioxide',
+        'sulphuric acid', 'hydrochloric acid', 'nitric acid',
+    ]
+    
+    PHARMA_RAW_KEYWORDS_29 = [
+        'methanol', 'ethanol', 'alcohol', 'glycerol', 'glycol',
+        'mannitol', 'sorbitol', 'phenol', 'vanillin',
+        'citric acid', 'acetic acid', 'benzoic acid', 'salicylic',
+        'stearic', 'palmitic', 'oleic', 'lauric',
+        'formaldehyde', 'paraformaldehyde', 'acetone',
+        'ether', 'ester', 'lactone', 'coumarin',
+        'amine', 'amide', 'amino', 'urea',
+        'menthol', 'camphor', 'thymol', 'eucalyptol',
+        'benzyl alcohol', 'isopropyl alcohol',
+        'propylene glycol', 'ethylene glycol',
+        'acrylic acid', 'methacrylic',
+        'parathion', 'organo-phosphor',
+        'azodicarbonamide',
+        'butanol', 'propanol', 'octanol',
+    ]
+    
+    def classify_hs_pharma(hs_code, description):
+        desc_lower = description.lower()
+        code_prefix = hs_code[:2]
+        
+        if code_prefix == '30':
+            return True, 'Produk Farmasi'
+        
+        for kw in PHARMA_KEYWORDS:
+            if kw.lower() in desc_lower:
+                if code_prefix == '29':
+                    return True, 'Bahan Baku Obat (Kimia Organik)'
+                elif code_prefix == '28':
+                    return True, 'Bahan Baku Obat (Kimia Anorganik)'
+                elif code_prefix == '31':
+                    return True, 'Bahan Terkait Farmasi'
+                return True, 'Terkait Farmasi'
+        
+        if code_prefix == '29':
+            for kw in PHARMA_RAW_KEYWORDS_29:
+                if kw.lower() in desc_lower:
+                    return True, 'Bahan Baku Obat (Kimia Organik)'
+        
+        if code_prefix == '28':
+            for kw in PHARMA_RAW_KEYWORDS_28:
+                if kw.lower() in desc_lower:
+                    return True, 'Bahan Baku Obat (Kimia Anorganik)'
+        
+        if code_prefix == '31':
+            return False, 'Pupuk (Bukan Obat)'
+        
+        return False, 'Bukan Obat/Bahan Baku Obat'
+    
+    file_hs = st.file_uploader("📁 Upload file data BPS", type=['xlsx', 'xls'], key="hs_check")
+    
+    if file_hs:
+        try:
+            df_hs_raw = pd.read_excel(file_hs, header=None)
+            
+            header_row = None
+            for i in range(min(10, len(df_hs_raw))):
+                val = str(df_hs_raw.iloc[i, 0]).strip().lower()
+                if 'kode hs' in val or 'hs code' in val:
+                    header_row = i
+                    break
+            
+            if header_row is None:
+                header_row = 3
+            
+            data_start = header_row + 1
+            
+            hs_items = []
+            for idx in range(data_start, len(df_hs_raw)):
+                val = str(df_hs_raw.iloc[idx, 0]).strip()
+                match = re.match(r'\[(\d+)\]\s*(.*)', val)
+                if match:
+                    code = match.group(1)
+                    desc = match.group(2).strip()
+                    hs_items.append({
+                        'row_idx': idx,
+                        'raw_value': val,
+                        'hs_code': code,
+                        'description': desc,
+                        'prefix': code[:2]
+                    })
+            
+            st.success(f"Total **{len(hs_items)}** HS Code ditemukan dalam file")
+            
+            hs_filtered = [h for h in hs_items if h['prefix'] in ['28', '29', '30', '31']]
+            
+            st.markdown("---")
+            st.markdown("### 📊 Hasil Filter HS Code 28, 29, 30, 31")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            count_28 = len([h for h in hs_filtered if h['prefix'] == '28'])
+            count_29 = len([h for h in hs_filtered if h['prefix'] == '29'])
+            count_30 = len([h for h in hs_filtered if h['prefix'] == '30'])
+            count_31 = len([h for h in hs_filtered if h['prefix'] == '31'])
+            
+            with col1:
+                st.metric("Total Filter", len(hs_filtered))
+            with col2:
+                st.metric("HS 28 (Anorganik)", count_28)
+            with col3:
+                st.metric("HS 29 (Organik)", count_29)
+            with col4:
+                st.metric("HS 30 (Farmasi)", count_30)
+            with col5:
+                st.metric("HS 31 (Pupuk)", count_31)
+            
+            results = []
+            for h in hs_filtered:
+                is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
+                results.append({
+                    'HS Code': h['hs_code'],
+                    'Deskripsi (English)': h['description'],
+                    'Kategori': kategori,
+                    'Masuk Obat/Bahan Obat': 'YA' if is_pharma else 'TIDAK',
+                    'Chapter': f"HS {h['prefix']}"
+                })
+            
+            df_results = pd.DataFrame(results)
+            
+            pharma_count = len(df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA'])
+            non_pharma_count = len(df_results[df_results['Masuk Obat/Bahan Obat'] == 'TIDAK'])
+            
+            st.markdown("---")
+            st.markdown("### 💊 Hasil Klasifikasi Otomatis")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("💊 Masuk Obat/Bahan Obat", pharma_count)
+            with col2:
+                st.metric("❌ Bukan Obat", non_pharma_count)
+            
+            tab_all, tab_pharma, tab_non = st.tabs(["📋 Semua Data", "💊 Obat/Bahan Obat", "❌ Bukan Obat"])
+            
+            with tab_all:
+                def highlight_pharma(row):
+                    if row['Masuk Obat/Bahan Obat'] == 'YA':
+                        return ['background-color: #dcfce7'] * len(row)
+                    else:
+                        return ['background-color: #fef2f2'] * len(row)
+                
+                styled_df = df_results.style.apply(highlight_pharma, axis=1)
+                st.dataframe(styled_df, use_container_width=True, height=400)
+            
+            with tab_pharma:
+                df_pharma = df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA']
+                st.dataframe(df_pharma, use_container_width=True, height=400)
+            
+            with tab_non:
+                df_non_pharma = df_results[df_results['Masuk Obat/Bahan Obat'] == 'TIDAK']
+                st.dataframe(df_non_pharma, use_container_width=True, height=400)
+            
+            st.markdown("---")
+            st.markdown("### 📥 Download Hasil")
+            
+            hs_code_col = None
+            nama_obat_col = None
+            for j in range(min(10, len(df_hs_raw.columns))):
+                header_val = str(df_hs_raw.iloc[header_row, j]).strip().lower() if header_row < len(df_hs_raw) else ''
+                if header_val == 'hs code' or header_val == 'kode hs':
+                    if hs_code_col is None and j > 0:
+                        hs_code_col = j
+                if 'nama' in header_val and ('obat' in header_val or 'bahan' in header_val):
+                    nama_obat_col = j
+            
+            if hs_code_col is None:
+                hs_code_col = 1
+            if nama_obat_col is None:
+                nama_obat_col = 2
+            
+            df_output = df_hs_raw.copy()
+            
+            for h in hs_filtered:
+                is_pharma, kategori = classify_hs_pharma(h['hs_code'], h['description'])
+                if is_pharma:
+                    df_output.iloc[h['row_idx'], hs_code_col] = h['hs_code']
+                    df_output.iloc[h['row_idx'], nama_obat_col] = kategori + ': ' + h['description']
+            
+            output_hs = io.BytesIO()
+            with pd.ExcelWriter(output_hs, engine='openpyxl') as writer:
+                green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+                header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                header_font = Font(bold=True, color='FFFFFF')
+                thin_border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+                
+                df_output.to_excel(writer, index=False, header=False, sheet_name='Data Asli Terisi')
+                ws_asli = writer.sheets['Data Asli Terisi']
+                
+                pharma_rows = set()
+                for h in hs_filtered:
+                    is_pharma, _ = classify_hs_pharma(h['hs_code'], h['description'])
+                    if is_pharma:
+                        pharma_rows.add(h['row_idx'] + 1)
+                
+                for row_idx in range(1, len(df_output) + 1):
+                    for col_idx in range(1, min(len(df_output.columns) + 1, 10)):
+                        cell = ws_asli.cell(row=row_idx, column=col_idx)
+                        cell.border = thin_border
+                        if row_idx in pharma_rows:
+                            cell.fill = green_fill
+                
+                df_results.to_excel(writer, index=False, sheet_name='Klasifikasi HS Code')
+                ws_klasifikasi = writer.sheets['Klasifikasi HS Code']
+                
+                for col_idx in range(1, len(df_results.columns) + 1):
+                    cell = ws_klasifikasi.cell(row=1, column=col_idx)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal='center')
+                    cell.border = thin_border
+                
+                for row_idx in range(2, len(df_results) + 2):
+                    status_cell = ws_klasifikasi.cell(row=row_idx, column=4)
+                    for col_idx in range(1, len(df_results.columns) + 1):
+                        cell = ws_klasifikasi.cell(row=row_idx, column=col_idx)
+                        cell.border = thin_border
+                        if str(status_cell.value) == 'YA':
+                            cell.fill = green_fill
+                
+                for col_idx, col in enumerate(df_results.columns, 1):
+                    max_len = max(df_results[col].astype(str).apply(len).max(), len(str(col))) + 2
+                    ws_klasifikasi.column_dimensions[ws_klasifikasi.cell(row=1, column=col_idx).column_letter].width = min(max_len, 60)
+                
+                df_pharma_only = df_results[df_results['Masuk Obat/Bahan Obat'] == 'YA'].copy()
+                df_pharma_only.to_excel(writer, index=False, sheet_name='Obat & Bahan Baku Obat')
+                ws_obat = writer.sheets['Obat & Bahan Baku Obat']
+                
+                for col_idx in range(1, len(df_pharma_only.columns) + 1):
+                    cell = ws_obat.cell(row=1, column=col_idx)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal='center')
+                    cell.border = thin_border
+                
+                for row_idx in range(2, len(df_pharma_only) + 2):
+                    for col_idx in range(1, len(df_pharma_only.columns) + 1):
+                        cell = ws_obat.cell(row=row_idx, column=col_idx)
+                        cell.border = thin_border
+                        cell.fill = green_fill
+                
+                for col_idx, col in enumerate(df_pharma_only.columns, 1):
+                    if len(df_pharma_only) > 0:
+                        max_len = max(df_pharma_only[col].astype(str).apply(len).max(), len(str(col))) + 2
+                    else:
+                        max_len = len(str(col)) + 2
+                    ws_obat.column_dimensions[ws_obat.cell(row=1, column=col_idx).column_letter].width = min(max_len, 60)
+            
+            output_hs.seek(0)
+            
+            st.download_button(
+                label="📥 Download Hasil Klasifikasi (Excel)",
+                data=output_hs,
+                file_name="klasifikasi_hs_code_obat.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+            st.markdown("---")
+            st.info("**Catatan:** Klasifikasi otomatis berdasarkan deskripsi HS Code. Untuk verifikasi lebih lanjut, cek di [INSW INTR](https://insw.go.id/intr/detail-komoditas)")
+            
+        except Exception as e:
+            st.error(f"Terjadi kesalahan: {str(e)}")
+            st.info("Pastikan file dalam format yang benar (.xlsx atau .xls)")
+    else:
+        st.info("Silakan upload file data BPS untuk memulai pengecekan HS Code.")
 
 with tab_analysis:
     st.markdown("### 📈 Analisis Data")

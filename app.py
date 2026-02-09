@@ -818,7 +818,10 @@ with tab_hs:
                 try:
                     from playwright.sync_api import sync_playwright as _pw_check
                     with _pw_check() as _pw_test:
-                        _test_browser = _pw_test.chromium.launch(headless=True)
+                        _test_browser = _pw_test.chromium.launch(
+                            headless=True,
+                            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process']
+                        )
                         _test_browser.close()
                         st.session_state['playwright_available'] = True
                 except Exception as _pw_err:
@@ -854,185 +857,265 @@ with tab_hs:
                     with col_insw2:
                         btn_insw = st.button("🔍 Mulai Cek INSW Otomatis", type="primary", use_container_width=True, key="btn_insw")
 
-            if playwright_available and btn_insw and len(codes_to_check) > 0:
-                st.session_state['insw_results'] = []
+            if playwright_available and btn_insw and len(codes_to_check) > 0 and not st.session_state.get('insw_running', False):
+                st.session_state['insw_running'] = True
+                st.session_state['insw_complete'] = False
+                st.session_state.pop('insw_error', None)
+                insw_temp_results = []
                 st.session_state['insw_checked_prefixes'] = selected_prefixes
-                insw_results = []
                 progress_insw = st.progress(0)
                 status_text = st.empty()
+                error_container = st.empty()
 
-                try:
-                    from playwright.sync_api import sync_playwright
+                from playwright.sync_api import sync_playwright
 
-                    INSW_URL = "https://insw.go.id/intr/detail-komoditas"
-                    OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
-                                    'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
-                                    'vaksin', 'vitamin', 'narkotik', 'psikotropik',
-                                    'kuasi', 'prekursor', 'narkotika', 'psikotropika']
+                INSW_URL = "https://insw.go.id/intr/detail-komoditas"
+                OBAT_KEYWORDS = ['obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug',
+                                'suplemen kesehatan', 'bahan baku obat', 'kosmetik',
+                                'vaksin', 'vitamin', 'narkotik', 'psikotropik',
+                                'kuasi', 'prekursor', 'narkotika', 'psikotropika']
 
-                    def extract_insw_detail(pw_page, hs_code, desc_text=''):
-                        entry = {
-                            'HS Code': hs_code,
-                            'Deskripsi': desc_text,
-                            'Jenis': '-',
-                            'Ada Regulasi Impor': 'Tidak',
-                            'Lartas Border': 'Tidak',
-                            'Tata Niaga Post Border': 'Tidak',
-                            'Ada Regulasi Ekspor': 'Tidak',
-                            'Lartas Ekspor': 'Tidak',
-                            'Komoditi INSW': '-',
-                            'Terkait Obat (INSW)': 'Tidak',
-                            'Ada BPOM': 'Tidak',
-                            'Keterangan Impor': '-',
-                            'Keterangan Ekspor': '-',
-                        }
+                def extract_insw_detail(pw_page, hs_code, desc_text=''):
+                    entry = {
+                        'HS Code': hs_code,
+                        'Deskripsi': desc_text,
+                        'Jenis': '-',
+                        'Ada Regulasi Impor': 'Tidak',
+                        'Lartas Border': 'Tidak',
+                        'Tata Niaga Post Border': 'Tidak',
+                        'Ada Regulasi Ekspor': 'Tidak',
+                        'Lartas Ekspor': 'Tidak',
+                        'Komoditi INSW': '-',
+                        'Terkait Obat (INSW)': 'Tidak',
+                        'Ada BPOM': 'Tidak',
+                        'Keterangan Impor': '-',
+                        'Keterangan Ekspor': '-',
+                    }
 
-                        pw_page.goto(INSW_URL, timeout=20000, wait_until='domcontentloaded')
-                        search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=10000)
-                        search_input.fill(hs_code)
-                        search_input.press("Enter")
+                    pw_page.goto(INSW_URL, timeout=30000, wait_until='domcontentloaded')
+                    search_input = pw_page.wait_for_selector("input[placeholder='Cari kode HS / Uraian HS']", timeout=15000)
+                    search_input.fill(hs_code)
+                    search_input.press("Enter")
 
-                        try:
-                            pw_page.wait_for_selector("button:has-text('Detail')", timeout=8000)
-                        except Exception:
-                            entry['Jenis'] = 'Tidak ditemukan'
-                            entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
-                            entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
-                            return entry
-
-                        detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
-                        if not detail_btns:
-                            entry['Jenis'] = 'Tidak ditemukan'
-                            entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
-                            entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
-                            return entry
-
-                        detail_btns[0].click()
-                        pw_page.wait_for_timeout(2000)
-
-                        pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-
-                        body = pw_page.inner_text("body")
-
-                        has_lartas_border = "Regulasi Impor (Lartas Border)" in body
-                        has_tata_niaga = "Regulasi Impor (Tata Niaga Post Border)" in body
-                        has_import = has_lartas_border or has_tata_niaga or "Regulasi Impor" in body
-                        has_lartas_ekspor = "Regulasi Ekspor (Lartas Ekspor)" in body or "Lartas Ekspor" in body
-                        has_export = has_lartas_ekspor or "Regulasi Ekspor" in body
-
-                        entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
-                        entry['Lartas Border'] = 'YA' if has_lartas_border else 'Tidak'
-                        entry['Tata Niaga Post Border'] = 'YA' if has_tata_niaga else 'Tidak'
-                        entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
-                        entry['Lartas Ekspor'] = 'YA' if has_lartas_ekspor else 'Tidak'
-
-                        komoditi_list = []
-                        is_obat = False
-                        ket_impor_parts = []
-                        ket_ekspor_parts = []
-
-                        lines = body.split('\n')
-                        for li, line in enumerate(lines):
-                            stripped = line.strip()
-                            if stripped == 'Komoditi':
-                                for offset in range(1, 6):
-                                    if li + offset < len(lines):
-                                        next_line = lines[li + offset].strip()
-                                        if next_line.startswith('[') and next_line.endswith(']'):
-                                            komoditi_val = next_line[1:-1]
-                                            if komoditi_val and komoditi_val not in komoditi_list:
-                                                komoditi_list.append(komoditi_val)
-                                            break
-                                        elif next_line == ':':
-                                            continue
-                                        elif next_line and next_line not in ('Regulasi', 'Deskripsi', ''):
-                                            break
-
-                        if komoditi_list:
-                            entry['Komoditi INSW'] = '; '.join(komoditi_list)
-                            for k_val in komoditi_list:
-                                k_lower = k_val.lower()
-                                for ok in OBAT_KEYWORDS:
-                                    if ok in k_lower:
-                                        is_obat = True
-                                        break
-
-                        body_lower = body.lower()
-                        if 'bahan obat' in body_lower or 'bahan baku obat' in body_lower:
-                            is_obat = True
-
-                        has_bpom = 'BPOM' in body
-                        entry['Ada BPOM'] = 'YA' if has_bpom else 'Tidak'
-
-                        if has_lartas_border:
-                            ket_impor_parts.append('Lartas Border')
-                        if has_tata_niaga:
-                            ket_impor_parts.append('Tata Niaga Post Border')
-                        if has_bpom:
-                            ket_impor_parts.append('BPOM')
-                        if is_obat:
-                            ket_impor_parts.append('Terkait Obat/Farmasi')
-
-                        if has_lartas_ekspor:
-                            ket_ekspor_parts.append('Lartas Ekspor')
-
-                        entry['Keterangan Impor'] = '; '.join(ket_impor_parts) if ket_impor_parts else 'Tidak ada regulasi impor'
-                        entry['Keterangan Ekspor'] = '; '.join(ket_ekspor_parts) if ket_ekspor_parts else 'Tidak ada regulasi ekspor'
-
-                        if has_import and has_export:
-                            entry['Jenis'] = 'IMPOR & EKSPOR'
-                        elif has_import:
-                            entry['Jenis'] = 'IMPOR'
-                        elif has_export:
-                            entry['Jenis'] = 'EKSPOR'
-                        else:
-                            entry['Jenis'] = 'Tidak ada lartas'
-
-                        entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
-
+                    try:
+                        pw_page.wait_for_selector("button:has-text('Detail')", timeout=10000)
+                    except Exception:
+                        entry['Jenis'] = 'Tidak ditemukan'
+                        entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
+                        entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
                         return entry
 
+                    detail_btns = pw_page.query_selector_all("button:has-text('Detail')")
+                    if not detail_btns:
+                        entry['Jenis'] = 'Tidak ditemukan'
+                        entry['Keterangan Impor'] = 'Tidak ditemukan di INSW'
+                        entry['Keterangan Ekspor'] = 'Tidak ditemukan di INSW'
+                        return entry
+
+                    detail_btns[0].click()
+                    pw_page.wait_for_timeout(2500)
+
+                    pw_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+
+                    body = pw_page.inner_text("body")
+
+                    has_lartas_border = "Regulasi Impor (Lartas Border)" in body
+                    has_tata_niaga = "Regulasi Impor (Tata Niaga Post Border)" in body
+                    has_import = has_lartas_border or has_tata_niaga or "Regulasi Impor" in body
+                    has_lartas_ekspor = "Regulasi Ekspor (Lartas Ekspor)" in body or "Lartas Ekspor" in body
+                    has_export = has_lartas_ekspor or "Regulasi Ekspor" in body
+
+                    entry['Ada Regulasi Impor'] = 'YA' if has_import else 'Tidak'
+                    entry['Lartas Border'] = 'YA' if has_lartas_border else 'Tidak'
+                    entry['Tata Niaga Post Border'] = 'YA' if has_tata_niaga else 'Tidak'
+                    entry['Ada Regulasi Ekspor'] = 'YA' if has_export else 'Tidak'
+                    entry['Lartas Ekspor'] = 'YA' if has_lartas_ekspor else 'Tidak'
+
+                    komoditi_list = []
+                    is_obat = False
+                    ket_impor_parts = []
+                    ket_ekspor_parts = []
+
+                    lines = body.split('\n')
+                    for li, line in enumerate(lines):
+                        stripped = line.strip()
+                        if stripped == 'Komoditi':
+                            for offset in range(1, 6):
+                                if li + offset < len(lines):
+                                    next_line = lines[li + offset].strip()
+                                    if next_line.startswith('[') and next_line.endswith(']'):
+                                        komoditi_val = next_line[1:-1]
+                                        if komoditi_val and komoditi_val not in komoditi_list:
+                                            komoditi_list.append(komoditi_val)
+                                        break
+                                    elif next_line == ':':
+                                        continue
+                                    elif next_line and next_line not in ('Regulasi', 'Deskripsi', ''):
+                                        break
+
+                    if komoditi_list:
+                        entry['Komoditi INSW'] = '; '.join(komoditi_list)
+                        for k_val in komoditi_list:
+                            k_lower = k_val.lower()
+                            for ok in OBAT_KEYWORDS:
+                                if ok in k_lower:
+                                    is_obat = True
+                                    break
+
+                    body_lower = body.lower()
+                    if 'bahan obat' in body_lower or 'bahan baku obat' in body_lower:
+                        is_obat = True
+
+                    has_bpom = 'BPOM' in body
+                    entry['Ada BPOM'] = 'YA' if has_bpom else 'Tidak'
+
+                    if has_lartas_border:
+                        ket_impor_parts.append('Lartas Border')
+                    if has_tata_niaga:
+                        ket_impor_parts.append('Tata Niaga Post Border')
+                    if has_bpom:
+                        ket_impor_parts.append('BPOM')
+                    if is_obat:
+                        ket_impor_parts.append('Terkait Obat/Farmasi')
+
+                    if has_lartas_ekspor:
+                        ket_ekspor_parts.append('Lartas Ekspor')
+
+                    entry['Keterangan Impor'] = '; '.join(ket_impor_parts) if ket_impor_parts else 'Tidak ada regulasi impor'
+                    entry['Keterangan Ekspor'] = '; '.join(ket_ekspor_parts) if ket_ekspor_parts else 'Tidak ada regulasi ekspor'
+
+                    if has_import and has_export:
+                        entry['Jenis'] = 'IMPOR & EKSPOR'
+                    elif has_import:
+                        entry['Jenis'] = 'IMPOR'
+                    elif has_export:
+                        entry['Jenis'] = 'EKSPOR'
+                    else:
+                        entry['Jenis'] = 'Tidak ada lartas'
+
+                    entry['Terkait Obat (INSW)'] = 'YA' if is_obat else 'Tidak'
+
+                    return entry
+
+                pw_browser = None
+                error_count = 0
+                max_retries = 2
+
+                try:
                     with sync_playwright() as pw:
-                        pw_browser = pw.chromium.launch(headless=True)
+                        pw_browser = pw.chromium.launch(
+                            headless=True,
+                            args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+                                  '--single-process', '--disable-extensions',
+                                  '--disable-background-networking']
+                        )
                         pw_page = pw_browser.new_page()
-                        pw_page.set_default_timeout(20000)
+                        pw_page.set_default_timeout(30000)
 
                         for idx_hs, hs_code in enumerate(codes_to_check):
                             progress_val = (idx_hs + 1) / len(codes_to_check)
                             progress_insw.progress(progress_val, text=f"Mengecek HS Code {hs_code} ({idx_hs+1}/{len(codes_to_check)})...")
                             status_text.text(f"Sedang memproses: {hs_code} - {all_hs_desc_map.get(hs_code, '')[:60]}")
 
-                            try:
-                                result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
-                            except Exception as e_hs:
-                                result_entry = {
-                                    'HS Code': hs_code,
-                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
-                                    'Jenis': 'Error',
-                                    'Ada Regulasi Impor': '-',
-                                    'Lartas Border': '-',
-                                    'Tata Niaga Post Border': '-',
-                                    'Ada Regulasi Ekspor': '-',
-                                    'Lartas Ekspor': '-',
-                                    'Komoditi INSW': '-',
-                                    'Terkait Obat (INSW)': '-',
-                                    'Ada BPOM': '-',
-                                    'Keterangan Impor': f'Error: {str(e_hs)[:80]}',
-                                    'Keterangan Ekspor': '-',
-                                }
-                            insw_results.append(result_entry)
+                            result_entry = None
+                            for retry in range(max_retries + 1):
+                                try:
+                                    result_entry = extract_insw_detail(pw_page, hs_code, all_hs_desc_map.get(hs_code, ''))
+                                    break
+                                except Exception as e_hs:
+                                    if retry < max_retries:
+                                        try:
+                                            pw_page.close()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            pw_page = pw_browser.new_page()
+                                            pw_page.set_default_timeout(30000)
+                                        except Exception:
+                                            try:
+                                                pw_browser.close()
+                                            except Exception:
+                                                pass
+                                            try:
+                                                pw_browser = pw.chromium.launch(
+                                                    headless=True,
+                                                    args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+                                                          '--single-process', '--disable-extensions']
+                                                )
+                                                pw_page = pw_browser.new_page()
+                                                pw_page.set_default_timeout(30000)
+                                            except Exception as e_launch:
+                                                error_count += 1
+                                                result_entry = {
+                                                    'HS Code': hs_code,
+                                                    'Deskripsi': all_hs_desc_map.get(hs_code, ''),
+                                                    'Jenis': 'Error',
+                                                    'Ada Regulasi Impor': '-', 'Lartas Border': '-',
+                                                    'Tata Niaga Post Border': '-', 'Ada Regulasi Ekspor': '-',
+                                                    'Lartas Ekspor': '-', 'Komoditi INSW': '-',
+                                                    'Terkait Obat (INSW)': '-', 'Ada BPOM': '-',
+                                                    'Keterangan Impor': f'Browser error: {str(e_launch)[:60]}',
+                                                    'Keterangan Ekspor': '-',
+                                                }
+                                                break
+                                    else:
+                                        error_count += 1
+                                        result_entry = {
+                                            'HS Code': hs_code,
+                                            'Deskripsi': all_hs_desc_map.get(hs_code, ''),
+                                            'Jenis': 'Error',
+                                            'Ada Regulasi Impor': '-',
+                                            'Lartas Border': '-',
+                                            'Tata Niaga Post Border': '-',
+                                            'Ada Regulasi Ekspor': '-',
+                                            'Lartas Ekspor': '-',
+                                            'Komoditi INSW': '-',
+                                            'Terkait Obat (INSW)': '-',
+                                            'Ada BPOM': '-',
+                                            'Keterangan Impor': f'Error: {str(e_hs)[:80]}',
+                                            'Keterangan Ekspor': '-',
+                                        }
 
-                        pw_browser.close()
+                            if result_entry:
+                                insw_temp_results.append(result_entry)
+                                st.session_state['insw_results'] = list(insw_temp_results)
 
+                        try:
+                            pw_browser.close()
+                        except Exception:
+                            pass
+
+                    st.session_state['insw_results'] = insw_temp_results
+                    st.session_state['insw_running'] = False
+                    st.session_state['insw_complete'] = True
                     progress_insw.progress(1.0, text="Selesai!")
-                    status_text.text("Pengecekan INSW selesai!")
+                    if error_count > 0:
+                        status_text.text(f"Selesai! ({error_count} HS Code mengalami error)")
+                    else:
+                        status_text.text("Pengecekan INSW selesai!")
+                    st.rerun()
 
                 except Exception as e_insw:
-                    st.error(f"Error saat mengakses INSW: {str(e_insw)}")
-                    status_text.text("Terjadi error saat mengakses INSW")
+                    if insw_temp_results:
+                        st.session_state['insw_results'] = insw_temp_results
+                        st.session_state['insw_complete'] = True
+                        st.session_state['insw_error'] = f"Proses terhenti setelah {len(insw_temp_results)} HS Code. Error: {str(e_insw)[:100]}"
+                    else:
+                        st.session_state['insw_error'] = f"Error saat mengakses INSW: {str(e_insw)}"
+                    st.session_state['insw_running'] = False
+                    try:
+                        if pw_browser:
+                            pw_browser.close()
+                    except Exception:
+                        pass
+                    st.rerun()
 
-                if insw_results:
-                    st.session_state['insw_results'] = insw_results
+            if st.session_state.get('insw_error'):
+                err_msg = st.session_state.pop('insw_error')
+                if st.session_state.get('insw_results'):
+                    st.warning(err_msg + " Hasil parsial ditampilkan di bawah.")
+                else:
+                    st.error(err_msg)
 
             insw_results_stored = st.session_state.get('insw_results', [])
             if insw_results_stored:

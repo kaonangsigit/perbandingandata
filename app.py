@@ -163,7 +163,7 @@ st.markdown("""
 st.markdown('<p class="main-header">📊 Perbandingan Data Realisasi Impor</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">Aplikasi untuk membandingkan dan menganalisis data impor dengan mudah</p>', unsafe_allow_html=True)
 
-tab_main, tab_hs, tab_analysis = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data"])
+tab_main, tab_hs, tab_analysis, tab_petugas, tab_absen, tab_importir, tab_merge = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data", "👤 Cek Petugas Loket S2", "📋 Cek Kehadiran", "🏢 Analisis Importir", "🔗 Gabung Data Excel"])
 
 def clean_value(value):
     if pd.isna(value):
@@ -1680,6 +1680,1304 @@ with tab_analysis:
             st.info("💡 Pastikan file Excel dalam format yang benar (.xlsx atau .xls)")
     else:
         st.info("👆 Silakan upload file Excel untuk memulai analisis data.")
+
+with tab_petugas:
+    st.markdown("### 👤 Cek & Lengkapi Nama Petugas Loket S2")
+    st.markdown("Otomatis melengkapi **Nama Petugas** yang kosong di data Loket S2 berdasarkan data **Form Konsultasi**, serta mengisi **Skor** berdasarkan tingkat kepuasan.")
+
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+        st.markdown("**📁 File Loket S2**")
+        file_loket = st.file_uploader("Upload file Loket S2 (.xlsx)", type=["xlsx", "xls"], key="loket_s2_file")
+    with col_up2:
+        st.markdown("**📁 File Form Konsultasi (bisa lebih dari 1)**")
+        files_form = st.file_uploader("Upload file Form Konsultasi (.xlsx)", type=["xlsx", "xls"], key="form_konsul_files", accept_multiple_files=True)
+
+    if 'petugas_result' not in st.session_state:
+        st.session_state.petugas_result = None
+    if 'petugas_excel' not in st.session_state:
+        st.session_state.petugas_excel = None
+
+    if file_loket and files_form:
+        if st.button("🔍 Proses & Lengkapi Data Petugas", key="btn_cek_petugas"):
+            with st.spinner("Memproses data..."):
+                try:
+                    df_loket_raw = pd.read_excel(file_loket)
+
+                    skor_map = {'Sangat Puas': 2, 'Puas': 1, 'Tidak Puas': 0}
+
+                    loket_records = []
+                    current_date = None
+                    current_satisfaction = None
+                    idx_loket = 0
+                    while idx_loket < len(df_loket_raw):
+                        val0 = str(df_loket_raw.iloc[idx_loket, 0]).strip() if pd.notna(df_loket_raw.iloc[idx_loket, 0]) else ''
+                        val1 = str(df_loket_raw.iloc[idx_loket, 1]).strip() if pd.notna(df_loket_raw.iloc[idx_loket, 1]) else ''
+
+                        if val0 in ['', 'Row Labels', 'Grand Total'] or 'Nama petugas' in val1:
+                            idx_loket += 1
+                            continue
+
+                        if 'Sangat Puas' in val0:
+                            current_satisfaction = 'Sangat Puas'
+                            idx_loket += 1
+                            continue
+                        elif 'Tidak Puas' in val0:
+                            current_satisfaction = 'Tidak Puas'
+                            idx_loket += 1
+                            continue
+                        elif 'Puas' in val0 and 'Sangat' not in val0 and 'Tidak' not in val0:
+                            current_satisfaction = 'Puas'
+                            idx_loket += 1
+                            continue
+
+                        try:
+                            date_val = pd.to_datetime(val0)
+                            if date_val.year >= 2025:
+                                current_date = date_val
+                                idx_loket += 1
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+
+                        if '@' in val0:
+                            idx_loket += 1
+                            continue
+
+                        if idx_loket + 1 < len(df_loket_raw):
+                            next_val = str(df_loket_raw.iloc[idx_loket + 1, 0]).strip() if pd.notna(df_loket_raw.iloc[idx_loket + 1, 0]) else ''
+                            if '@' in next_val:
+                                nama = val0
+                                petugas_loket = val1 if val1 else ''
+                                email = next_val.lower()
+                                skor_otomatis = skor_map.get(current_satisfaction, '')
+                                loket_records.append({
+                                    'Tanggal': current_date,
+                                    'Nama': nama,
+                                    'Email': email,
+                                    'Petugas_Loket': petugas_loket,
+                                    'Kepuasan': current_satisfaction if current_satisfaction else '',
+                                    'Skor': skor_otomatis
+                                })
+                                idx_loket += 2
+                                continue
+
+                        idx_loket += 1
+
+                    df_loket = pd.DataFrame(loket_records)
+
+                    form_records = []
+                    for ff in files_form:
+                        df_f = pd.read_excel(ff)
+                        has_loket_col = 'Pilihan Loket Layanan' in df_f.columns
+                        if has_loket_col:
+                            df_f = df_f[df_f['Pilihan Loket Layanan'].astype(str).str.contains('S2', case=False, na=False)]
+
+                        col_nama = 'Nama' if 'Nama' in df_f.columns else None
+                        col_email = 'Email Address' if 'Email Address' in df_f.columns else None
+                        col_tanggal = 'Tanggal Konsultasi' if 'Tanggal Konsultasi' in df_f.columns else None
+                        col_petugas = 'Nama Petugas' if 'Nama Petugas' in df_f.columns else None
+
+                        if not all([col_nama, col_email, col_petugas]):
+                            continue
+
+                        for _, row in df_f.iterrows():
+                            f_nama = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ''
+                            f_email = str(row[col_email]).strip().lower() if pd.notna(row[col_email]) else ''
+                            f_tanggal = None
+                            if col_tanggal and pd.notna(row[col_tanggal]):
+                                try:
+                                    f_tanggal = pd.to_datetime(row[col_tanggal])
+                                except (ValueError, TypeError):
+                                    pass
+                            f_petugas = str(row[col_petugas]).strip() if pd.notna(row[col_petugas]) else ''
+
+                            if f_nama and f_email:
+                                form_records.append({
+                                    'Nama_Form': f_nama,
+                                    'Email_Form': f_email,
+                                    'Tanggal_Form': f_tanggal,
+                                    'Petugas_Form': f_petugas,
+                                    'Sumber': ff.name
+                                })
+
+                    df_forms = pd.DataFrame(form_records)
+
+                    if df_loket.empty:
+                        st.session_state.petugas_result = None
+                        st.error("❌ Tidak ada data yang berhasil diparsing dari file Loket S2.")
+                    elif df_forms.empty:
+                        st.session_state.petugas_result = None
+                        st.error("❌ Tidak ada data Form Konsultasi yang ditemukan.")
+                    else:
+                        def normalize_name(name):
+                            if not name:
+                                return ''
+                            return re.sub(r'\s+', ' ', str(name).strip().lower())
+
+                        def find_form_petugas(email, tanggal, nama):
+                            candidates = df_forms[df_forms['Email_Form'] == email]
+                            if not candidates.empty and tanggal is not None:
+                                for _, fr in candidates.iterrows():
+                                    if fr['Tanggal_Form'] is not None:
+                                        try:
+                                            if pd.to_datetime(tanggal).date() == pd.to_datetime(fr['Tanggal_Form']).date():
+                                                return fr['Petugas_Form'], fr['Sumber']
+                                        except (ValueError, TypeError):
+                                            pass
+                            if not candidates.empty:
+                                first = candidates.iloc[0]
+                                if first['Petugas_Form']:
+                                    return first['Petugas_Form'], first['Sumber']
+                            norm_nama = normalize_name(nama)
+                            if norm_nama:
+                                for _, fr in df_forms.iterrows():
+                                    if normalize_name(fr['Nama_Form']) == norm_nama:
+                                        if tanggal is not None and fr['Tanggal_Form'] is not None:
+                                            try:
+                                                if pd.to_datetime(tanggal).date() == pd.to_datetime(fr['Tanggal_Form']).date():
+                                                    return fr['Petugas_Form'], fr['Sumber']
+                                            except (ValueError, TypeError):
+                                                pass
+                            return '', ''
+
+                        def match_short_to_full(short_name, full_name):
+                            sn = normalize_name(short_name)
+                            fn = normalize_name(full_name)
+                            if not sn or not fn:
+                                return False
+                            if sn == fn:
+                                return True
+                            if sn in fn or fn in sn:
+                                return True
+                            sn_parts = sn.split()
+                            fn_parts = fn.split()
+                            for p in sn_parts:
+                                if len(p) > 2 and p in fn_parts:
+                                    return True
+                            return False
+
+                        results = []
+                        for _, lr in df_loket.iterrows():
+                            petugas_loket = lr['Petugas_Loket']
+                            form_petugas, sumber = find_form_petugas(lr['Email'], lr['Tanggal'], lr['Nama'])
+
+                            if petugas_loket and form_petugas:
+                                if match_short_to_full(petugas_loket, form_petugas):
+                                    status = 'Cocok'
+                                    petugas_final = form_petugas
+                                else:
+                                    status = 'Tidak Cocok'
+                                    petugas_final = petugas_loket
+                            elif petugas_loket and not form_petugas:
+                                status = 'Tidak Ada di Form'
+                                petugas_final = petugas_loket
+                            elif not petugas_loket and form_petugas:
+                                status = 'Otomatis Terisi'
+                                petugas_final = form_petugas
+                            else:
+                                status = 'Kosong'
+                                petugas_final = ''
+
+                            tanggal_str = ''
+                            if lr['Tanggal'] is not None:
+                                try:
+                                    tanggal_str = pd.to_datetime(lr['Tanggal']).strftime('%d-%m-%Y')
+                                except Exception:
+                                    tanggal_str = str(lr['Tanggal'])
+
+                            results.append({
+                                'Tanggal': tanggal_str,
+                                'Nama': lr['Nama'],
+                                'Email': lr['Email'],
+                                'Kepuasan': lr['Kepuasan'],
+                                'Skor': lr['Skor'],
+                                'Petugas (Loket S2)': petugas_loket if petugas_loket else '-',
+                                'Petugas (Form)': form_petugas if form_petugas else '-',
+                                'Petugas Final': petugas_final if petugas_final else '-',
+                                'Status': status,
+                                'Sumber File': sumber if sumber else '-'
+                            })
+
+                        df_result = pd.DataFrame(results)
+                        st.session_state.petugas_result = df_result
+
+                        out_buf = io.BytesIO()
+                        with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
+                            df_result.to_excel(writer, index=False, sheet_name='Hasil Lengkap')
+
+                            wb = writer.book
+                            ws = wb['Hasil Lengkap']
+
+                            green_fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                            blue_fill = PatternFill(start_color='CCE5FF', end_color='CCE5FF', fill_type='solid')
+                            red_fill = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
+                            yellow_fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+                            gray_fill = PatternFill(start_color='E2E3E5', end_color='E2E3E5', fill_type='solid')
+                            hdr_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                            hdr_font = Font(bold=True, color='FFFFFF')
+                            border_thin = Border(
+                                left=Side(style='thin'), right=Side(style='thin'),
+                                top=Side(style='thin'), bottom=Side(style='thin')
+                            )
+
+                            for cell in ws[1]:
+                                cell.fill = hdr_fill
+                                cell.font = hdr_font
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                                cell.border = border_thin
+
+                            status_ci = list(df_result.columns).index('Status') + 1
+                            fill_map = {
+                                'Cocok': green_fill, 'Otomatis Terisi': blue_fill,
+                                'Tidak Cocok': red_fill, 'Kosong': yellow_fill,
+                                'Tidak Ada di Form': gray_fill
+                            }
+                            for ri in range(2, ws.max_row + 1):
+                                sv = ws.cell(row=ri, column=status_ci).value or ''
+                                fl = fill_map.get(sv)
+                                for ci_x in range(1, ws.max_column + 1):
+                                    c = ws.cell(row=ri, column=ci_x)
+                                    c.border = border_thin
+                                    if fl:
+                                        c.fill = fl
+
+                            for ci_x in range(1, ws.max_column + 1):
+                                ml = 0
+                                for ri in range(1, ws.max_row + 1):
+                                    cv = ws.cell(row=ri, column=ci_x).value
+                                    if cv:
+                                        ml = max(ml, len(str(cv)))
+                                ws.column_dimensions[ws.cell(row=1, column=ci_x).column_letter].width = min(ml + 3, 40)
+
+                            for sheet_status, sheet_name in [('Cocok', 'Cocok'), ('Otomatis Terisi', 'Otomatis Terisi'), ('Tidak Cocok', 'Tidak Cocok'), ('Kosong', 'Petugas Kosong'), ('Tidak Ada di Form', 'Tidak Ada di Form')]:
+                                df_sheet = df_result[df_result['Status'] == sheet_status]
+                                if not df_sheet.empty:
+                                    df_sheet.to_excel(writer, index=False, sheet_name=sheet_name)
+
+                        out_buf.seek(0)
+                        st.session_state.petugas_excel = out_buf.getvalue()
+                        st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Terjadi kesalahan: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+    if st.session_state.petugas_result is not None:
+        df_result = st.session_state.petugas_result
+
+        total = len(df_result)
+        cocok = len(df_result[df_result['Status'] == 'Cocok'])
+        otomatis = len(df_result[df_result['Status'] == 'Otomatis Terisi'])
+        tidak_cocok = len(df_result[df_result['Status'] == 'Tidak Cocok'])
+        kosong = len(df_result[df_result['Status'] == 'Kosong'])
+        no_form = len(df_result[df_result['Status'] == 'Tidak Ada di Form'])
+
+        st.success(f"✅ Berhasil memproses {total} data Loket S2")
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("Total", total)
+        c2.metric("Cocok", cocok)
+        c3.metric("Otomatis Terisi", otomatis)
+        c4.metric("Tidak Cocok", tidak_cocok)
+        c5.metric("Kosong", kosong)
+        c6.metric("Tidak Ada di Form", no_form)
+
+        filter_st = st.selectbox("Filter Status:", ["Semua", "Cocok", "Otomatis Terisi", "Tidak Cocok", "Kosong", "Tidak Ada di Form"], key="filter_petugas")
+        df_show = df_result if filter_st == "Semua" else df_result[df_result['Status'] == filter_st]
+
+        def color_row(row):
+            s = row['Status']
+            if s == 'Cocok':
+                return ['background-color: #d4edda'] * len(row)
+            elif s == 'Otomatis Terisi':
+                return ['background-color: #cce5ff'] * len(row)
+            elif s == 'Tidak Cocok':
+                return ['background-color: #f8d7da'] * len(row)
+            elif s == 'Kosong':
+                return ['background-color: #fff3cd'] * len(row)
+            elif s == 'Tidak Ada di Form':
+                return ['background-color: #e2e3e5'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(df_show.style.apply(color_row, axis=1), height=500)
+
+        if st.session_state.petugas_excel is not None:
+            st.download_button(
+                label="📥 Download Hasil Pengecekan Petugas (Excel)",
+                data=st.session_state.petugas_excel,
+                file_name="hasil_cek_petugas_loket_s2.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    elif not file_loket or not files_form:
+        st.info("👆 Silakan upload file **Loket S2** dan **Form Konsultasi** untuk memulai pengecekan petugas.")
+
+with tab_absen:
+    st.markdown("### 📋 Cek Kehadiran Pegawai")
+    st.markdown("Bandingkan data **Pegawai** dengan **Daftar Hadir** untuk mengetahui siapa saja yang **tidak hadir**.")
+
+    col_ab1, col_ab2 = st.columns(2)
+    with col_ab1:
+        st.markdown("**📁 File Data Pegawai**")
+        file_pegawai = st.file_uploader("Upload file Pegawai (.xlsx)", type=["xlsx", "xls"], key="file_pegawai")
+    with col_ab2:
+        st.markdown("**📁 File Daftar Hadir**")
+        file_hadir = st.file_uploader("Upload file Daftar Hadir (.xlsx)", type=["xlsx", "xls"], key="file_hadir")
+
+    if 'absen_result' not in st.session_state:
+        st.session_state.absen_result = None
+    if 'absen_excel' not in st.session_state:
+        st.session_state.absen_excel = None
+
+    if file_pegawai and file_hadir:
+        if st.button("🔍 Cek Kehadiran", key="btn_cek_absen"):
+            with st.spinner("Memproses data..."):
+                try:
+                    df_peg_raw = pd.read_excel(file_pegawai)
+                    df_hadir_raw = pd.read_excel(file_hadir)
+
+                    pegawai_list = []
+                    nama_col_peg = None
+                    jabatan_col_peg = None
+                    for ci in range(min(10, df_peg_raw.shape[1])):
+                        for ri in range(min(10, len(df_peg_raw))):
+                            val = str(df_peg_raw.iloc[ri, ci]).strip().upper() if pd.notna(df_peg_raw.iloc[ri, ci]) else ''
+                            if val == 'NAMA':
+                                nama_col_peg = ci
+                                start_row_peg = ri + 1
+                                if ci + 1 < df_peg_raw.shape[1]:
+                                    jabatan_col_peg = ci + 1
+                                break
+                        if nama_col_peg is not None:
+                            break
+
+                    if nama_col_peg is None:
+                        for ci in range(min(10, df_peg_raw.shape[1])):
+                            for ri in range(min(10, len(df_peg_raw))):
+                                val = str(df_peg_raw.iloc[ri, ci]).strip().lower() if pd.notna(df_peg_raw.iloc[ri, ci]) else ''
+                                if 'nama' in val:
+                                    nama_col_peg = ci
+                                    start_row_peg = ri + 1
+                                    break
+                            if nama_col_peg is not None:
+                                break
+
+                    if nama_col_peg is None:
+                        nama_col_peg = 2
+                        jabatan_col_peg = 3
+                        start_row_peg = 4
+
+                    for ri in range(start_row_peg, len(df_peg_raw)):
+                        nama = str(df_peg_raw.iloc[ri, nama_col_peg]).strip() if pd.notna(df_peg_raw.iloc[ri, nama_col_peg]) else ''
+                        jabatan = ''
+                        if jabatan_col_peg is not None and jabatan_col_peg < df_peg_raw.shape[1]:
+                            jabatan = str(df_peg_raw.iloc[ri, jabatan_col_peg]).strip() if pd.notna(df_peg_raw.iloc[ri, jabatan_col_peg]) else ''
+                        if nama and nama != 'nan':
+                            pegawai_list.append({'Nama': nama, 'Jabatan': jabatan if jabatan != 'nan' else ''})
+
+                    hadir_list = []
+                    nama_col_h = None
+                    kehadiran_col_h = None
+                    waktu_col_h = None
+                    for ci in range(min(10, df_hadir_raw.shape[1])):
+                        for ri in range(min(10, len(df_hadir_raw))):
+                            val = str(df_hadir_raw.iloc[ri, ci]).strip().lower() if pd.notna(df_hadir_raw.iloc[ri, ci]) else ''
+                            if 'nama' in val:
+                                nama_col_h = ci
+                                start_row_h = ri + 1
+                                break
+                        if nama_col_h is not None:
+                            break
+
+                    if nama_col_h is None:
+                        nama_col_h = 0
+                        start_row_h = 6
+
+                    for ci in range(min(10, df_hadir_raw.shape[1])):
+                        for ri in range(min(10, len(df_hadir_raw))):
+                            val = str(df_hadir_raw.iloc[ri, ci]).strip().lower() if pd.notna(df_hadir_raw.iloc[ri, ci]) else ''
+                            if 'kehadiran' in val:
+                                kehadiran_col_h = ci
+                            if 'waktu' in val:
+                                waktu_col_h = ci
+
+                    for ri in range(start_row_h, len(df_hadir_raw)):
+                        nama = str(df_hadir_raw.iloc[ri, nama_col_h]).strip() if pd.notna(df_hadir_raw.iloc[ri, nama_col_h]) else ''
+                        kehadiran = ''
+                        waktu = ''
+                        if kehadiran_col_h is not None:
+                            kehadiran = str(df_hadir_raw.iloc[ri, kehadiran_col_h]).strip() if pd.notna(df_hadir_raw.iloc[ri, kehadiran_col_h]) else ''
+                        if waktu_col_h is not None:
+                            waktu = str(df_hadir_raw.iloc[ri, waktu_col_h]).strip() if pd.notna(df_hadir_raw.iloc[ri, waktu_col_h]) else ''
+                        if nama and nama != 'nan':
+                            hadir_list.append({'Nama_Hadir': nama, 'Kehadiran': kehadiran if kehadiran != 'nan' else '', 'Waktu': waktu if waktu != 'nan' else ''})
+
+                    def clean_name_absen(name):
+                        cleaned = re.sub(r',?\s*(S\.Si|S\.Farm|S\.E|S\.Kom|S\.IP|S\.Ak|S\.Sos|S\.K\.M|SKM|A\.Md|Apt|apt|M\.Si|M\.S|M\.Sc|M\.Farm|M\.Med\.Sc|M\.Epid|M\.K\.M|MKM|M\.T|Dra\.|Drs\.|Dr\.|drg\.|Rr\.)\.*', '', name, flags=re.IGNORECASE)
+                        cleaned = re.sub(r'[,.]', ' ', cleaned)
+                        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                        return cleaned.lower()
+
+                    hadir_clean_map = {}
+                    for h in hadir_list:
+                        hadir_clean_map[clean_name_absen(h['Nama_Hadir'])] = h
+
+                    results_absen = []
+                    for p in pegawai_list:
+                        p_clean = clean_name_absen(p['Nama'])
+                        matched_hadir = None
+                        for h_clean, h_data in hadir_clean_map.items():
+                            if p_clean == h_clean:
+                                matched_hadir = h_data
+                                break
+                            if p_clean in h_clean or h_clean in p_clean:
+                                matched_hadir = h_data
+                                break
+                            p_parts = p_clean.split()
+                            h_parts = h_clean.split()
+                            if len(p_parts) >= 2 and len(h_parts) >= 2:
+                                if p_parts[0] == h_parts[0] and p_parts[-1] == h_parts[-1]:
+                                    matched_hadir = h_data
+                                    break
+
+                        if matched_hadir:
+                            results_absen.append({
+                                'Nama Pegawai': p['Nama'],
+                                'Jabatan': p['Jabatan'],
+                                'Status': 'Hadir',
+                                'Kehadiran': matched_hadir.get('Kehadiran', ''),
+                                'Waktu': matched_hadir.get('Waktu', '')
+                            })
+                        else:
+                            results_absen.append({
+                                'Nama Pegawai': p['Nama'],
+                                'Jabatan': p['Jabatan'],
+                                'Status': 'Tidak Hadir',
+                                'Kehadiran': '-',
+                                'Waktu': '-'
+                            })
+
+                    df_absen = pd.DataFrame(results_absen)
+                    st.session_state.absen_result = df_absen
+
+                    out_absen = io.BytesIO()
+                    with pd.ExcelWriter(out_absen, engine='openpyxl') as writer:
+                        df_absen.to_excel(writer, index=False, sheet_name='Semua Pegawai')
+
+                        wb = writer.book
+                        ws = wb['Semua Pegawai']
+
+                        green_f = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                        red_f = PatternFill(start_color='F8D7DA', end_color='F8D7DA', fill_type='solid')
+                        hdr_f = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                        hdr_fn = Font(bold=True, color='FFFFFF')
+                        bdr = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+                        for cell in ws[1]:
+                            cell.fill = hdr_f
+                            cell.font = hdr_fn
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                            cell.border = bdr
+
+                        sc = list(df_absen.columns).index('Status') + 1
+                        for ri in range(2, ws.max_row + 1):
+                            sv = ws.cell(row=ri, column=sc).value or ''
+                            fl = green_f if sv == 'Hadir' else red_f if sv == 'Tidak Hadir' else None
+                            for ci_x in range(1, ws.max_column + 1):
+                                cell = ws.cell(row=ri, column=ci_x)
+                                cell.border = bdr
+                                if fl:
+                                    cell.fill = fl
+
+                        for ci_x in range(1, ws.max_column + 1):
+                            ml = 0
+                            for ri in range(1, ws.max_row + 1):
+                                cv = ws.cell(row=ri, column=ci_x).value
+                                if cv:
+                                    ml = max(ml, len(str(cv)))
+                            ws.column_dimensions[ws.cell(row=1, column=ci_x).column_letter].width = min(ml + 3, 50)
+
+                        df_tidak = df_absen[df_absen['Status'] == 'Tidak Hadir']
+                        if not df_tidak.empty:
+                            df_tidak.to_excel(writer, index=False, sheet_name='Tidak Hadir')
+
+                    out_absen.seek(0)
+                    st.session_state.absen_excel = out_absen.getvalue()
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Terjadi kesalahan: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+    if st.session_state.absen_result is not None:
+        df_absen = st.session_state.absen_result
+
+        total_peg = len(df_absen)
+        total_hadir = len(df_absen[df_absen['Status'] == 'Hadir'])
+        total_tidak = len(df_absen[df_absen['Status'] == 'Tidak Hadir'])
+
+        st.success(f"✅ Total Pegawai: {total_peg} | Hadir: {total_hadir} | Tidak Hadir: {total_tidak}")
+
+        c_a1, c_a2, c_a3 = st.columns(3)
+        c_a1.metric("Total Pegawai", total_peg)
+        c_a2.metric("Hadir", total_hadir)
+        c_a3.metric("Tidak Hadir", total_tidak)
+
+        filter_absen = st.selectbox("Filter:", ["Semua", "Hadir", "Tidak Hadir"], key="filter_absen")
+        df_show_absen = df_absen if filter_absen == "Semua" else df_absen[df_absen['Status'] == filter_absen]
+
+        def color_absen(row):
+            if row['Status'] == 'Hadir':
+                return ['background-color: #d4edda'] * len(row)
+            elif row['Status'] == 'Tidak Hadir':
+                return ['background-color: #f8d7da'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(df_show_absen.style.apply(color_absen, axis=1), height=500)
+
+        if st.session_state.absen_excel is not None:
+            st.download_button(
+                label="📥 Download Hasil Cek Kehadiran (Excel)",
+                data=st.session_state.absen_excel,
+                file_name="hasil_cek_kehadiran.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    elif not file_pegawai or not file_hadir:
+        st.info("👆 Silakan upload file **Data Pegawai** dan **Daftar Hadir** untuk memulai pengecekan.")
+
+with tab_importir:
+    st.markdown("### 🏢 Analisis Bidang Usaha Importir")
+    st.markdown("Upload file Excel, pilih kolom **Nama Importir**, lalu sistem akan **otomatis menganalisis bidang usaha** setiap importir menggunakan AI dan menentukan apakah termasuk **CEK** (obat/kosmetik/OT/food) atau **NOM** (bukan komoditas BPOM).")
+
+    file_importir = st.file_uploader("Upload file Excel (.xlsx)", type=["xlsx", "xls"], key="file_importir_upload")
+
+    if 'importir_df_raw' not in st.session_state:
+        st.session_state.importir_df_raw = None
+    if 'importir_headers' not in st.session_state:
+        st.session_state.importir_headers = None
+    if 'importir_header_row' not in st.session_state:
+        st.session_state.importir_header_row = None
+    if 'importir_result' not in st.session_state:
+        st.session_state.importir_result = None
+    if 'importir_excel' not in st.session_state:
+        st.session_state.importir_excel = None
+    if 'importir_progress' not in st.session_state:
+        st.session_state.importir_progress = None
+    if 'importir_file_id' not in st.session_state:
+        st.session_state.importir_file_id = None
+
+    if file_importir:
+        current_file_id = f"{file_importir.name}_{file_importir.size}"
+        if st.session_state.importir_file_id != current_file_id:
+            st.session_state.importir_result = None
+            st.session_state.importir_excel = None
+            st.session_state.importir_file_id = current_file_id
+    elif not file_importir and st.session_state.importir_file_id is not None:
+        st.session_state.importir_result = None
+        st.session_state.importir_excel = None
+        st.session_state.importir_file_id = None
+
+    if file_importir:
+        try:
+            df_raw_imp = pd.read_excel(file_importir, header=None)
+            header_row_imp = 0
+            for ri in range(min(10, len(df_raw_imp))):
+                row_vals = [str(df_raw_imp.iloc[ri, ci]).strip().upper() if pd.notna(df_raw_imp.iloc[ri, ci]) else '' for ci in range(min(10, df_raw_imp.shape[1]))]
+                if any('NAMA' in v for v in row_vals):
+                    header_row_imp = ri
+                    break
+
+            df_with_header = pd.read_excel(file_importir, header=header_row_imp)
+            st.session_state.importir_df_raw = df_with_header
+            st.session_state.importir_headers = list(df_with_header.columns)
+            st.session_state.importir_header_row = header_row_imp
+
+            st.success(f"✅ File berhasil dibaca! **{len(df_with_header)}** baris data, **{len(df_with_header.columns)}** kolom.")
+
+            with st.expander("📋 Preview Data (10 baris pertama)", expanded=True):
+                st.dataframe(df_with_header.head(10), height=300)
+
+            with st.expander("📊 Struktur Kolom"):
+                col_info = []
+                for i, col in enumerate(df_with_header.columns):
+                    col_letter = chr(65 + i) if i < 26 else chr(65 + (i // 26 - 1)) + chr(65 + (i % 26))
+                    non_null = df_with_header[col].notna().sum()
+                    col_info.append({
+                        'Kolom Excel': col_letter,
+                        'Nama Kolom': str(col)[:50],
+                        'Jumlah Data': non_null,
+                        'Kosong': len(df_with_header) - non_null
+                    })
+                st.dataframe(pd.DataFrame(col_info), height=400)
+
+            st.markdown("---")
+            st.markdown("#### ⚙️ Pengaturan Analisis")
+
+            col_names = [str(c) for c in df_with_header.columns]
+
+            nama_col_default = 0
+            for i, cn in enumerate(col_names):
+                if 'NAMA_IMPORTIR' in cn.upper() or 'NAMA IMPORTIR' in cn.upper():
+                    nama_col_default = i
+                    break
+
+            selected_nama_col = st.selectbox(
+                "Pilih kolom **Nama Importir** yang akan dianalisis:",
+                options=col_names,
+                index=nama_col_default,
+                key="sel_nama_importir"
+            )
+
+            keterangan_col_options = ["(Buat kolom baru)"] + col_names
+            ket_default = 0
+            for i, cn in enumerate(col_names):
+                cn_up = cn.upper().strip()
+                if 'PENJELASAN' in cn_up or 'KETERANGAN' in cn_up:
+                    ket_default = i + 1
+                    break
+            selected_ket_col = st.selectbox(
+                "Pilih kolom untuk **Keterangan (NOM/CEK)**:",
+                options=keterangan_col_options,
+                index=ket_default,
+                key="sel_ket_col"
+            )
+
+            bidang_col_options = ["(Buat kolom baru)"] + col_names
+            bid_default = 0
+            for i, cn in enumerate(col_names):
+                cn_up = cn.upper().strip()
+                if 'HASIL' in cn_up and 'ANALISIS' in cn_up:
+                    bid_default = i + 1
+                    break
+            selected_bidang_col = st.selectbox(
+                "Pilih kolom untuk **Bidang Usaha / Hasil Analisis**:",
+                options=bidang_col_options,
+                index=bid_default,
+                key="sel_bidang_col"
+            )
+
+            only_empty = st.checkbox("Hanya analisis baris yang kolom Keterangan-nya masih kosong", value=True, key="only_empty_importir")
+
+            product_col_candidates = {}
+            for cn_s in col_names:
+                cn_up = cn_s.upper()
+                if 'BRGURAI' in cn_up:
+                    product_col_candidates['brgurai'] = cn_s
+                elif 'NOHS' in cn_up or cn_up == 'NOHS':
+                    product_col_candidates['nohs'] = cn_s
+                elif 'URAIAN_HS' in cn_up or 'URAIAN HS' in cn_up:
+                    product_col_candidates['uraian_hs'] = cn_s
+                elif 'ALAMAT' in cn_up:
+                    product_col_candidates['alamat'] = cn_s
+
+            unique_importers = df_with_header[selected_nama_col].dropna().unique()
+            if only_empty and selected_ket_col != "(Buat kolom baru)":
+                mask_empty = df_with_header[selected_ket_col].isna() | (df_with_header[selected_ket_col].astype(str).str.strip() == '')
+                unique_importers = df_with_header.loc[mask_empty, selected_nama_col].dropna().unique()
+
+            unique_importers = [str(n).strip() for n in unique_importers if str(n).strip() and str(n).strip().lower() != 'nan']
+            unique_importers = list(dict.fromkeys(unique_importers))
+
+            importir_context = {}
+            for imp_name in unique_importers:
+                rows_imp = df_with_header[df_with_header[selected_nama_col].astype(str).str.strip() == imp_name]
+                products = []
+                alamat = ''
+                for _, row_imp in rows_imp.head(5).iterrows():
+                    prod_info = {}
+                    if 'brgurai' in product_col_candidates:
+                        v = str(row_imp.get(product_col_candidates['brgurai'], '')).strip()
+                        if v and v != 'nan':
+                            prod_info['barang'] = v[:80]
+                    if 'nohs' in product_col_candidates:
+                        v = str(row_imp.get(product_col_candidates['nohs'], '')).strip()
+                        if v and v != 'nan':
+                            prod_info['hs'] = v
+                    if 'uraian_hs' in product_col_candidates:
+                        v = str(row_imp.get(product_col_candidates['uraian_hs'], '')).strip()
+                        if v and v != 'nan':
+                            prod_info['uraian'] = v[:80]
+                    if prod_info:
+                        products.append(prod_info)
+                    if not alamat and 'alamat' in product_col_candidates:
+                        v = str(row_imp.get(product_col_candidates['alamat'], '')).strip()
+                        if v and v != 'nan':
+                            alamat = v[:100]
+                importir_context[imp_name] = {'products': products, 'alamat': alamat}
+
+            st.info(f"📊 Ditemukan **{len(unique_importers)}** importir unik yang perlu dianalisis.")
+
+            if st.button("🤖 Mulai Analisis Otomatis dengan AI", key="btn_analisis_importir"):
+                from openai import OpenAI
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+                import time
+
+                ai_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
+                ai_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+
+                if not ai_key or not ai_url:
+                    st.error("❌ AI Integration belum dikonfigurasi. Pastikan OpenAI AI Integration sudah terinstall.")
+                else:
+                    client = OpenAI(api_key=ai_key, base_url=ai_url)
+
+                    def is_rate_limit_error(exception):
+                        error_msg = str(exception)
+                        return ("429" in error_msg or "RATELIMIT" in error_msg.upper()
+                                or "quota" in error_msg.lower() or "rate limit" in error_msg.lower()
+                                or (hasattr(exception, "status_code") and exception.status_code == 429))
+
+                    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=60), retry=retry_if_exception(is_rate_limit_error), reraise=True)
+                    def classify_batch(names_batch, context_map):
+                        entries = []
+                        for i, n in enumerate(names_batch):
+                            ctx = context_map.get(n, {})
+                            entry = f"{i+1}. Importir: {n}"
+                            if ctx.get('alamat'):
+                                entry += f"\n   Alamat: {ctx['alamat']}"
+                            if ctx.get('products'):
+                                prods = ctx['products'][:3]
+                                prod_strs = []
+                                for p in prods:
+                                    ps = ""
+                                    if p.get('barang'):
+                                        ps += p['barang']
+                                    if p.get('hs'):
+                                        ps += f" (HS: {p['hs']})"
+                                    if p.get('uraian'):
+                                        ps += f" - {p['uraian']}"
+                                    if ps:
+                                        prod_strs.append(ps)
+                                if prod_strs:
+                                    entry += "\n   Produk yang diimpor: " + "; ".join(prod_strs)
+                            entries.append(entry)
+                        names_text = "\n".join(entries)
+
+                        prompt = f"""Kamu adalah analis perdagangan Indonesia yang sangat ahli dalam mengidentifikasi bidang usaha perusahaan importir dan menganalisis komoditas impor terkait regulasi BPOM.
+
+Untuk setiap importir di bawah ini, berikan:
+1. "bidang": Bidang usaha utama perusahaan (singkat, 2-5 kata)
+2. "kelas": "CEK" jika bidang usahanya terkait obat/farmasi, kosmetik, obat tradisional/herbal, makanan/minuman/food/pangan, suplemen kesehatan, atau bahan baku untuk produk-produk tersebut. "NOM" jika BUKAN terkait hal-hal tersebut.
+3. "alasan": Penjelasan detail (2-3 kalimat) yang mencakup:
+   - Deskripsi produk yang diimpor (berdasarkan data barang/HS Code jika tersedia)
+   - Kegunaan produk tersebut
+   - Mengapa diklasifikasikan NOM atau CEK
+   - Informasi tentang importir dan bidang usahanya
+
+Contoh alasan yang baik:
+"Thermal grease dengan CAS Number 63148-62-9 merupakan bahan berbasis Polydimethylsiloxane (silicone oil) yang digunakan sebagai pasta penghantar panas (heat transfer compound), dan tidak termasuk bahan obat maupun makanan. Importir produk ini adalah PT Jaya Refrigeration Equipment yaitu perusahaan yang bergerak di bidang perdagangan dan penyediaan peralatan sistem pendingin (refrigeration) serta komponen pendukungnya."
+
+PENTING:
+- Perusahaan bahan kimia industri/specialty chemicals yang TIDAK spesifik untuk farmasi/food → NOM
+- Perusahaan yang jelas bergerak di farmasi/pharmaceutical → CEK
+- Perusahaan food ingredients/flavor/fragrance → CEK
+- Jika ragu, klasifikasikan sebagai CEK
+- Alasan harus ditulis dalam Bahasa Indonesia yang formal dan jelas
+- Gunakan informasi produk (nama barang, HS Code, uraian) untuk memberikan alasan yang spesifik
+
+Jawab HANYA dalam format JSON object dengan key "results" berisi array, contoh:
+{{"results": [{{"nama": "PT ABC", "bidang": "Farmasi", "kelas": "CEK", "alasan": "PT ABC merupakan perusahaan farmasi yang mengimpor bahan baku obat..."}}, {{"nama": "PT XYZ", "bidang": "Peralatan Pendingin", "kelas": "NOM", "alasan": "PT XYZ mengimpor komponen refrigerasi yang bukan merupakan komoditas BPOM..."}}]}}
+
+Daftar importir:
+{names_text}"""
+
+                        response = client.chat.completions.create(
+                            model="gpt-5-mini",
+                            messages=[{"role": "user", "content": prompt}],
+                            response_format={"type": "json_object"},
+                            max_completion_tokens=8192
+                        )
+                        content = response.choices[0].message.content or "[]"
+                        try:
+                            parsed = _json.loads(content)
+                            if isinstance(parsed, dict):
+                                for key in parsed:
+                                    if isinstance(parsed[key], list):
+                                        return parsed[key]
+                                return []
+                            return parsed
+                        except:
+                            return []
+
+                    progress_bar = st.progress(0, text="Memulai analisis...")
+                    status_text = st.empty()
+
+                    batch_size = 15
+                    batches = [unique_importers[i:i+batch_size] for i in range(0, len(unique_importers), batch_size)]
+                    all_results = {}
+                    total_batches = len(batches)
+                    errors_count = 0
+
+                    for bi, batch in enumerate(batches):
+                        progress = (bi + 1) / total_batches
+                        progress_bar.progress(progress, text=f"Menganalisis batch {bi+1}/{total_batches} ({len(all_results)}/{len(unique_importers)} importir)...")
+                        status_text.text(f"🔄 Sedang memproses: {batch[0][:30]}... s/d {batch[-1][:30]}...")
+
+                        try:
+                            batch_ctx = {n: importir_context.get(n, {}) for n in batch}
+                            results = classify_batch(batch, batch_ctx)
+                            matched_in_batch = set()
+                            if isinstance(results, list):
+                                for r in results:
+                                    if isinstance(r, dict) and 'nama' in r:
+                                        rname = r['nama'].strip().upper()
+                                        all_results[rname] = {
+                                            'bidang': r.get('bidang', ''),
+                                            'kelas': r.get('kelas', 'CEK'),
+                                            'alasan': r.get('alasan', '')
+                                        }
+                                        matched_in_batch.add(rname)
+                            for name in batch:
+                                if name.strip().upper() not in matched_in_batch:
+                                    norm_name = re.sub(r'[^A-Z0-9\s]', '', name.strip().upper()).strip()
+                                    found = False
+                                    for mk in matched_in_batch:
+                                        mk_norm = re.sub(r'[^A-Z0-9\s]', '', mk).strip()
+                                        if norm_name == mk_norm or (len(norm_name) > 5 and (norm_name in mk_norm or mk_norm in norm_name)):
+                                            found = True
+                                            break
+                                    if not found:
+                                        all_results[name.strip().upper()] = {'bidang': 'Perlu cek manual', 'kelas': 'CEK', 'alasan': 'Data importir tidak dapat dianalisis secara otomatis, perlu pengecekan manual.'}
+                        except Exception as e:
+                            errors_count += 1
+                            st.warning(f"⚠️ Error batch {bi+1}: {str(e)[:100]}")
+                            for name in batch:
+                                all_results[name.strip().upper()] = {'bidang': 'Error - perlu cek manual', 'kelas': 'CEK', 'alasan': 'Terjadi error saat analisis, perlu pengecekan manual.'}
+
+                        if bi < total_batches - 1:
+                            time.sleep(0.5)
+
+                    progress_bar.progress(1.0, text="✅ Analisis selesai!")
+                    status_text.text(f"✅ Selesai! {len(all_results)} importir dianalisis" + (f" ({errors_count} batch error)" if errors_count else ""))
+
+                    df_result = df_with_header.copy()
+
+                    if selected_ket_col == "(Buat kolom baru)":
+                        ket_col_name = "Keterangan_AI"
+                        df_result[ket_col_name] = ""
+                    else:
+                        ket_col_name = selected_ket_col
+
+                    if selected_bidang_col == "(Buat kolom baru)":
+                        bidang_col_name = "Bidang_Usaha_AI"
+                        df_result[bidang_col_name] = ""
+                    else:
+                        bidang_col_name = selected_bidang_col
+
+                    alasan_col_name = "Alasan_Analisis"
+                    df_result[alasan_col_name] = ""
+
+                    def normalize_imp_name(n):
+                        return re.sub(r'[^A-Z0-9\s]', '', n).strip()
+
+                    norm_map = {normalize_imp_name(k): v for k, v in all_results.items()}
+
+                    filled_count = 0
+                    for idx in range(len(df_result)):
+                        nama_val = str(df_result.at[idx, selected_nama_col]).strip().upper() if pd.notna(df_result.at[idx, selected_nama_col]) else ''
+                        if not nama_val or nama_val == 'NAN':
+                            continue
+
+                        if only_empty and selected_ket_col != "(Buat kolom baru)":
+                            existing = str(df_result.at[idx, ket_col_name]).strip() if pd.notna(df_result.at[idx, ket_col_name]) else ''
+                            if existing:
+                                continue
+
+                        nama_norm = normalize_imp_name(nama_val)
+                        matched = all_results.get(nama_val)
+                        if not matched:
+                            matched = norm_map.get(nama_norm)
+                        if not matched:
+                            nama_words = set(nama_val.split())
+                            best_score = 0
+                            for key, val in all_results.items():
+                                key_words = set(key.split())
+                                if len(nama_words) >= 2 and len(key_words) >= 2:
+                                    common = len(nama_words & key_words)
+                                    score = common / max(len(nama_words), len(key_words))
+                                    if score > best_score and score >= 0.6:
+                                        best_score = score
+                                        matched = val
+
+                        if matched:
+                            df_result.at[idx, ket_col_name] = matched['kelas']
+                            df_result.at[idx, bidang_col_name] = matched['bidang']
+                            df_result.at[idx, alasan_col_name] = matched.get('alasan', '')
+                            filled_count += 1
+                        else:
+                            df_result.at[idx, ket_col_name] = 'CEK'
+                            df_result.at[idx, bidang_col_name] = 'Perlu cek manual'
+                            df_result.at[idx, alasan_col_name] = 'Data importir tidak dapat dianalisis secara otomatis, perlu pengecekan manual.'
+                            filled_count += 1
+
+                    st.session_state.importir_result = df_result
+                    st.session_state.importir_ket_col = ket_col_name
+                    st.session_state.importir_bidang_col = bidang_col_name
+                    st.session_state.importir_alasan_col = alasan_col_name
+
+                    out_imp = io.BytesIO()
+                    with pd.ExcelWriter(out_imp, engine='openpyxl') as writer:
+                        df_result.to_excel(writer, index=False, sheet_name='Data Lengkap')
+
+                        wb = writer.book
+                        ws = wb['Data Lengkap']
+
+                        hdr_f_imp = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                        hdr_fn_imp = Font(bold=True, color='FFFFFF')
+                        green_fi = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                        yellow_fi = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+                        bdr_i = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+                        for cell in ws[1]:
+                            cell.fill = hdr_f_imp
+                            cell.font = hdr_fn_imp
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                            cell.border = bdr_i
+
+                        col_names_result = list(df_result.columns)
+                        ket_ci = col_names_result.index(ket_col_name) + 1 if ket_col_name in col_names_result else None
+                        bid_ci = col_names_result.index(bidang_col_name) + 1 if bidang_col_name in col_names_result else None
+
+                        if ket_ci:
+                            for ri in range(2, ws.max_row + 1):
+                                sv = str(ws.cell(row=ri, column=ket_ci).value or '').strip().upper()
+                                if sv == 'NOM':
+                                    ws.cell(row=ri, column=ket_ci).fill = green_fi
+                                    if bid_ci:
+                                        ws.cell(row=ri, column=bid_ci).fill = green_fi
+                                elif sv == 'CEK':
+                                    ws.cell(row=ri, column=ket_ci).fill = yellow_fi
+                                    if bid_ci:
+                                        ws.cell(row=ri, column=bid_ci).fill = yellow_fi
+                                ws.cell(row=ri, column=ket_ci).border = bdr_i
+                                if bid_ci:
+                                    ws.cell(row=ri, column=bid_ci).border = bdr_i
+
+                        summary_data = []
+                        for name_upper, info in all_results.items():
+                            summary_data.append({
+                                'Nama Importir': name_upper,
+                                'Bidang Usaha': info['bidang'],
+                                'Klasifikasi': info['kelas'],
+                                'Alasan': info.get('alasan', '')
+                            })
+                        df_summary = pd.DataFrame(summary_data)
+                        df_summary.to_excel(writer, index=False, sheet_name='Ringkasan Importir')
+
+                        ws2 = wb['Ringkasan Importir']
+                        for cell in ws2[1]:
+                            cell.fill = hdr_f_imp
+                            cell.font = hdr_fn_imp
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                            cell.border = bdr_i
+
+                        kls_ci = 3
+                        for ri in range(2, ws2.max_row + 1):
+                            sv = str(ws2.cell(row=ri, column=kls_ci).value or '').strip().upper()
+                            for ci_x in range(1, ws2.max_column + 1):
+                                ws2.cell(row=ri, column=ci_x).border = bdr_i
+                            if sv == 'NOM':
+                                for ci_x in range(1, ws2.max_column + 1):
+                                    ws2.cell(row=ri, column=ci_x).fill = green_fi
+                            elif sv == 'CEK':
+                                for ci_x in range(1, ws2.max_column + 1):
+                                    ws2.cell(row=ri, column=ci_x).fill = yellow_fi
+
+                        for ws_x in [ws, ws2]:
+                            for ci_x in range(1, ws_x.max_column + 1):
+                                ml = 0
+                                for ri in range(1, min(ws_x.max_row + 1, 100)):
+                                    cv = ws_x.cell(row=ri, column=ci_x).value
+                                    if cv:
+                                        ml = max(ml, len(str(cv)))
+                                ws_x.column_dimensions[ws_x.cell(row=1, column=ci_x).column_letter].width = min(ml + 3, 50)
+
+                    out_imp.seek(0)
+                    st.session_state.importir_excel = out_imp.getvalue()
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Gagal membaca file: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    if st.session_state.importir_result is not None:
+        df_res = st.session_state.importir_result
+        ket_col_name = st.session_state.get('importir_ket_col', 'Keterangan_AI')
+        bidang_col_name = st.session_state.get('importir_bidang_col', 'Bidang_Usaha_AI')
+        alasan_col_name = st.session_state.get('importir_alasan_col', 'Alasan_Analisis')
+
+        if ket_col_name in df_res.columns:
+            total_nom = len(df_res[df_res[ket_col_name].astype(str).str.strip().str.upper() == 'NOM'])
+            total_cek = len(df_res[df_res[ket_col_name].astype(str).str.strip().str.upper() == 'CEK'])
+            total_kosong = len(df_res[df_res[ket_col_name].isna() | (df_res[ket_col_name].astype(str).str.strip() == '')])
+
+            st.success(f"✅ Analisis selesai! NOM: {total_nom} | CEK: {total_cek} | Belum diisi: {total_kosong}")
+
+            c_i1, c_i2, c_i3 = st.columns(3)
+            c_i1.metric("NOM (Bukan BPOM)", total_nom)
+            c_i2.metric("CEK (Perlu Dicek)", total_cek)
+            c_i3.metric("Belum Diisi", total_kosong)
+
+        filter_imp = st.selectbox("Filter Klasifikasi:", ["Semua", "CEK", "NOM", "Belum Diisi"], key="filter_importir")
+        if filter_imp == "CEK":
+            df_show_imp = df_res[df_res[ket_col_name].astype(str).str.strip().str.upper() == 'CEK']
+        elif filter_imp == "NOM":
+            df_show_imp = df_res[df_res[ket_col_name].astype(str).str.strip().str.upper() == 'NOM']
+        elif filter_imp == "Belum Diisi":
+            df_show_imp = df_res[df_res[ket_col_name].isna() | (df_res[ket_col_name].astype(str).str.strip() == '')]
+        else:
+            df_show_imp = df_res
+
+        show_cols = []
+        for cn_s in df_res.columns:
+            cn_upper = str(cn_s).upper()
+            if 'NAMA_IMPORTIR' in cn_upper or 'NAMA IMPORTIR' in cn_upper or cn_s == ket_col_name or cn_s == bidang_col_name or cn_s == alasan_col_name or 'BRGURAI' in cn_upper or 'NOHS' in cn_upper or 'STATUS' in cn_upper:
+                show_cols.append(cn_s)
+
+        if not show_cols:
+            show_cols = list(df_res.columns)
+
+        def color_imp_row(row):
+            kls = str(row.get(ket_col_name, '')).strip().upper()
+            if kls == 'NOM':
+                return ['background-color: #d4edda'] * len(row)
+            elif kls == 'CEK':
+                return ['background-color: #fff3cd'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(df_show_imp[show_cols].style.apply(color_imp_row, axis=1), height=500)
+
+        if st.session_state.importir_excel is not None:
+            st.download_button(
+                label="📥 Download Hasil Analisis Importir (Excel)",
+                data=st.session_state.importir_excel,
+                file_name="hasil_analisis_importir.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    elif not file_importir:
+        st.info("👆 Silakan upload file **Excel** untuk memulai analisis importir.")
+
+with tab_merge:
+    st.markdown("### 🔗 Gabung Data dari 2 File Excel")
+    st.markdown("""Upload **2 file Excel** dengan struktur yang sama. Sistem akan:
+- **Mempertahankan format asli** File Utama (filter, warna, font, lebar kolom, dll)
+- **Hanya mengisi sel kosong** di File Utama dengan data dari File Pelengkap
+- **Tidak mengubah** data yang sudah ada""")
+
+    col_mg1, col_mg2 = st.columns(2)
+    with col_mg1:
+        st.markdown("**📁 File Utama** (yang ada sel kosong)")
+        file_merge_main = st.file_uploader("Upload File Utama (.xlsx)", type=["xlsx"], key="file_merge_main")
+    with col_mg2:
+        st.markdown("**📁 File Pelengkap** (yang datanya lebih lengkap)")
+        file_merge_source = st.file_uploader("Upload File Pelengkap (.xlsx)", type=["xlsx"], key="file_merge_source")
+
+    if 'merge_excel' not in st.session_state:
+        st.session_state.merge_excel = None
+    if 'merge_stats' not in st.session_state:
+        st.session_state.merge_stats = None
+    if 'merge_file_id' not in st.session_state:
+        st.session_state.merge_file_id = None
+    if 'merge_filename' not in st.session_state:
+        st.session_state.merge_filename = None
+
+    if file_merge_main and file_merge_source:
+        current_merge_id = f"{file_merge_main.name}_{file_merge_main.size}_{file_merge_source.name}_{file_merge_source.size}"
+        if st.session_state.merge_file_id != current_merge_id:
+            st.session_state.merge_excel = None
+            st.session_state.merge_stats = None
+            st.session_state.merge_file_id = current_merge_id
+
+        try:
+            from openpyxl import load_workbook
+
+            df_main_peek = pd.read_excel(file_merge_main, header=None, nrows=5)
+            file_merge_main.seek(0)
+            df_src_peek = pd.read_excel(file_merge_source, header=None, nrows=5)
+            file_merge_source.seek(0)
+
+            df_main_info = pd.read_excel(file_merge_main, header=None, nrows=0)
+            file_merge_main.seek(0)
+            df_src_info = pd.read_excel(file_merge_source, header=None, nrows=0)
+            file_merge_source.seek(0)
+
+            main_cols = df_main_peek.shape[1]
+            src_cols = df_src_peek.shape[1]
+
+            main_rows_est = None
+            src_rows_est = None
+
+            st.success(f"✅ File berhasil dibaca!")
+
+            col_info_mg1, col_info_mg2 = st.columns(2)
+            with col_info_mg1:
+                st.info(f"**File Utama**: {main_cols} kolom")
+            with col_info_mg2:
+                st.info(f"**File Pelengkap**: {src_cols} kolom")
+
+            col_headers = []
+            for ci in range(main_cols):
+                found_header = None
+                for ri in range(min(5, len(df_main_peek))):
+                    v = df_main_peek.iloc[ri, ci]
+                    if pd.notna(v) and str(v).strip() and str(v).strip().upper() != 'NAN':
+                        vs = str(v).strip().upper()
+                        if any(kw in vs for kw in ['NAMA', 'NO', 'TANGGAL', 'KODE', 'STATUS', 'KANTOR', 'ALAMAT', 'NPWP', 'SERIAL', 'SATUAN', 'KEMASAN', 'NEGARA', 'PELABUHAN', 'PENJELASAN', 'HASIL', 'ESTIMASI', 'CENTANG', 'NOMOR', 'ALASAN']):
+                            found_header = str(v).strip()
+                            break
+                if not found_header:
+                    for ri in range(min(5, len(df_main_peek))):
+                        v = df_main_peek.iloc[ri, ci]
+                        if pd.notna(v) and str(v).strip() and str(v).strip().upper() != 'NAN' and len(str(v).strip()) > 2:
+                            found_header = str(v).strip()
+                            break
+                if not found_header:
+                    found_header = f'Kolom_{ci}'
+
+                col_idx_1 = ci + 1
+                col_letter = chr(64 + col_idx_1) if col_idx_1 <= 26 else chr(64 + ((col_idx_1 - 1) // 26)) + chr(65 + ((col_idx_1 - 1) % 26))
+                col_headers.append(f"{col_letter}: {found_header[:40]}")
+
+            st.markdown("---")
+            st.markdown("#### ⚙️ Pengaturan Penggabungan")
+
+            mode_merge = st.radio(
+                "Mode penggabungan:",
+                ["Isi semua sel kosong di File Utama dari File Pelengkap", "Pilih kolom tertentu saja"],
+                key="mode_merge"
+            )
+
+            selected_cols_merge = list(range(1, main_cols + 1))
+            if mode_merge == "Pilih kolom tertentu saja":
+                selected_headers = st.multiselect(
+                    "Pilih kolom yang ingin digabungkan:",
+                    options=col_headers,
+                    default=[],
+                    key="sel_cols_merge"
+                )
+                selected_cols_merge = []
+                for sh in selected_headers:
+                    col_letter = sh.split(":")[0].strip()
+                    if len(col_letter) == 1:
+                        selected_cols_merge.append(ord(col_letter) - 64)
+                    elif len(col_letter) == 2:
+                        selected_cols_merge.append((ord(col_letter[0]) - 64) * 26 + (ord(col_letter[1]) - 64))
+
+            start_row_mg = st.number_input("Mulai dari baris ke- (di Excel):", min_value=1, value=1, step=1, key="start_row_merge")
+            end_row_mg = st.number_input("Sampai baris ke- (di Excel, 0 = sampai akhir):", min_value=0, value=0, step=1, key="end_row_merge")
+
+            overwrite_mode = st.checkbox("Timpa data yang sudah ada (overwrite)", value=False, key="overwrite_merge")
+
+            if st.button("🔄 Gabungkan Data", key="btn_merge"):
+                progress_mg = st.progress(0, text="Membaca File Pelengkap (cepat via pandas)...")
+
+                file_merge_source.seek(0)
+                df_src_all = pd.read_excel(file_merge_source, header=None)
+                src_total_rows = len(df_src_all)
+
+                progress_mg.progress(15, text="Membuka File Utama (mempertahankan format)...")
+
+                file_merge_main.seek(0)
+                wb_main = load_workbook(file_merge_main)
+                ws_main = wb_main.active
+
+                main_total_rows = ws_main.max_row or 0
+                max_r = min(main_total_rows, src_total_rows)
+                max_c = min(ws_main.max_column or 0, df_src_all.shape[1])
+
+                actual_start = max(start_row_mg, 1)
+                actual_end = end_row_mg if end_row_mg > 0 else max_r
+
+                if main_total_rows != src_total_rows:
+                    st.warning(f"⚠️ Jumlah baris berbeda! File Utama: {main_total_rows}, File Pelengkap: {src_total_rows}. Diproses sampai baris terpendek.")
+
+                progress_mg.progress(30, text="Mengisi sel kosong...")
+
+                fill_stats = {}
+                total_cols_to_process = len([c for c in selected_cols_merge if c <= max_c])
+                processed_cols = 0
+
+                for ci in selected_cols_merge:
+                    if ci > max_c:
+                        continue
+                    col_label = col_headers[ci - 1] if ci - 1 < len(col_headers) else f'Kolom_{ci}'
+                    count = 0
+                    pandas_ci = ci - 1
+
+                    for ri in range(actual_start, min(actual_end + 1, max_r + 1)):
+                        v_main = ws_main.cell(row=ri, column=ci).value
+                        main_empty = v_main is None or str(v_main).strip() == '' or str(v_main).strip().lower() == 'nan'
+
+                        if main_empty or overwrite_mode:
+                            src_ri = ri - 1
+                            if src_ri < len(df_src_all):
+                                v_src = df_src_all.iloc[src_ri, pandas_ci]
+                                src_filled = pd.notna(v_src) and str(v_src).strip() != '' and str(v_src).strip().lower() != 'nan'
+                                if src_filled:
+                                    ws_main.cell(row=ri, column=ci).value = v_src if not isinstance(v_src, float) or not v_src != v_src else None
+                                    count += 1
+
+                    if count > 0:
+                        fill_stats[col_label] = count
+
+                    processed_cols += 1
+                    pct = 30 + int(50 * processed_cols / max(total_cols_to_process, 1))
+                    progress_mg.progress(pct, text=f"Mengisi kolom {col_label}... ({processed_cols}/{total_cols_to_process})")
+
+                progress_mg.progress(85, text="Menyimpan file (mempertahankan format asli)...")
+
+                out_merge = io.BytesIO()
+                wb_main.save(out_merge)
+                wb_main.close()
+                out_merge.seek(0)
+
+                st.session_state.merge_excel = out_merge.getvalue()
+                st.session_state.merge_stats = fill_stats
+
+                base_name = file_merge_main.name
+                if base_name.endswith('.xlsx'):
+                    base_name = base_name[:-5]
+                st.session_state.merge_filename = f"{base_name}_LENGKAP.xlsx"
+
+                progress_mg.progress(100, text="Selesai!")
+                st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Gagal membaca file: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    if st.session_state.merge_stats is not None:
+        fill_stats = st.session_state.merge_stats
+        total_filled = sum(fill_stats.values())
+
+        st.success(f"✅ Penggabungan selesai! Total **{total_filled}** sel berhasil diisi.")
+        st.markdown("📌 **Format asli file dipertahankan** (filter, warna, font, lebar kolom, dll.)")
+
+        if fill_stats:
+            st.markdown("**📊 Rincian per kolom:**")
+            stats_df = pd.DataFrame([{'Kolom': k, 'Jumlah Sel Terisi': v} for k, v in fill_stats.items()])
+            st.dataframe(stats_df, height=min(len(stats_df) * 40 + 50, 400))
+        else:
+            st.info("Tidak ada sel yang perlu diisi. Data di File Utama sudah lengkap atau tidak ada data pelengkap yang cocok.")
+
+        if st.session_state.merge_excel is not None:
+            dl_name = st.session_state.merge_filename or "file_gabungan.xlsx"
+            st.download_button(
+                label="📥 Download File Gabungan (Excel)",
+                data=st.session_state.merge_excel,
+                file_name=dl_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    elif not file_merge_main or not file_merge_source:
+        st.info("👆 Silakan upload **File Utama** dan **File Pelengkap** untuk memulai penggabungan data.")
 
 st.markdown("---")
 st.markdown("""

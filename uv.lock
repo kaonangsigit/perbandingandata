@@ -1351,6 +1351,7 @@ dependencies = [
     { name = "pandas" },
     { name = "playwright" },
     { name = "streamlit" },
+    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -1361,6 +1362,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "playwright", specifier = ">=1.58.0" },
     { name = "streamlit", specifier = ">=1.53.0" },
+    { name = "tenacity", specifier = ">=9.1.2" },
 ]
 
 [[package]]

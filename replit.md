@@ -70,7 +70,45 @@ Preferred communication style: Simple, everyday language.
 - No database connections
 - No authentication systems
 
+### Features
+1. **Perbandingan Data** (Tab 1): Compare import realization data between system files and user data
+2. **Cek HS Code Obat** (Tab 2): Automated INSW website scraping for HS code regulation checks
+3. **Analisis Data** (Tab 3): Data analysis with bar/pie charts
+4. **Cek Petugas Loket S2** (Tab 4 in app.py): Auto-fill officer names from Form Konsultasi into Loket S2 data
+   - Parses Loket S2 pivot-table Excel format (date headers, name/email pairs, satisfaction levels)
+   - Auto-fills empty Petugas from Form Konsultasi by matching email + date, with fallback to name matching
+   - Auto-fills Skor from satisfaction level (Sangat Puas=2, Puas=1, Tidak Puas=0)
+   - Short name matching (e.g., "Verda" matches "Verda Dereviana Praningtyas")
+   - Color-coded statuses: Green (Cocok), Blue (Otomatis Terisi), Red (Tidak Cocok), Yellow (Kosong), Gray (Tidak Ada di Form)
+   - Excel export with formatted sheets per status category
+
+5. **Cek Kehadiran** (Tab 5 in app.py): Compare employee roster vs attendance list
+   - Auto-detects column headers (Nama, Jabatan, Kehadiran, Waktu)
+   - Smart name matching: strips titles/degrees for accurate comparison
+   - Color-coded: Green (Hadir), Red (Tidak Hadir)
+   - Excel export with separate "Tidak Hadir" sheet
+
+6. **Analisis Importir** (Tab 6 in app.py): AI-powered importer business classification
+   - Upload Excel → auto-detect headers → select columns
+   - AI classifies each importer as CEK (obat/kosmetik/OT/food) or NOM (non-BPOM)
+   - Uses OpenAI AI Integrations (gpt-5-mini) with batch processing (25 per batch)
+   - Retry logic with exponential backoff for rate limits
+   - Color-coded results: Green (NOM), Yellow (CEK)
+   - Excel export with formatted data + summary sheet
+   - Session state keyed to file identity to prevent stale results
+
+7. **Gabung Data Excel** (Tab 7 in app.py): Merge data from two Excel files
+   - Upload File Utama (with empty cells) and File Pelengkap (with filled data)
+   - Auto-detect headers, select specific columns or merge all
+   - Option to set row range and overwrite mode
+   - Color-coded Excel output with merge statistics report sheet
+   - Session state keyed to file identity
+
 ## Recent Changes
+- 2026-03-15: Added Gabung Data Excel tab for merging two Excel files
+- 2026-03-13: Added Analisis Importir tab with AI-powered business classification
+- 2026-03-09: Added Cek Kehadiran tab for attendance checking
+- 2026-03-09: Added Cek Petugas Loket S2 tab with auto-fill petugas & skor functionality
 - 2026-02-09: Refactored INSW scraping to background threading with thread-safe shared state to prevent WebSocket disconnection
 - 2026-02-09: Added dual format HS Code search (plain + dotted) for INSW compatibility
 - 2026-02-09: Increased timeouts (60s page load, 20s element waits) for production stability

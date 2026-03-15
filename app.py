@@ -98,20 +98,61 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    :root {
+        --bpom-green: #0f766e;
+        --bpom-green-2: #16a34a;
+        --bpom-bg: #f6fbf9;
+        --bpom-card: #ffffff;
+        --bpom-text: #0f172a;
+        --bpom-muted: #475569;
+        --bpom-border: #e2e8f0;
+        --bpom-shadow: 0 6px 24px rgba(2, 44, 34, 0.08);
+        --bpom-radius: 14px;
+    }
+
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 2rem;
+    }
+
+    .bpom-hero {
+        background: linear-gradient(90deg, rgba(15,118,110,0.12), rgba(22,163,74,0.10));
+        border: 1px solid var(--bpom-border);
+        border-radius: var(--bpom-radius);
+        padding: 18px 18px;
+        box-shadow: var(--bpom-shadow);
+        margin-bottom: 14px;
+    }
+    .bpom-hero-title {
+        font-size: 2.05rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--bpom-text);
+        margin: 0;
+        line-height: 1.1;
+    }
+    .bpom-hero-sub {
+        font-size: 1rem;
+        color: var(--bpom-muted);
+        margin: 6px 0 0 0;
+    }
+    .bpom-badge {
+        display: inline-block;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--bpom-green);
+        background: rgba(15,118,110,0.10);
+        border: 1px solid rgba(15,118,110,0.20);
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+    }
+
     .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        background: linear-gradient(90deg, #1e3a8a, #3b82f6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        padding: 1rem 0;
+        display: none;
     }
     .sub-header {
-        font-size: 1.2rem;
-        color: #64748b;
-        text-align: center;
-        margin-bottom: 2rem;
+        display: none;
     }
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
@@ -119,50 +160,84 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] {
         height: 50px;
         padding: 10px 20px;
-        background-color: #f1f5f9;
-        border-radius: 10px;
-        font-weight: 600;
+        background-color: rgba(15,118,110,0.06);
+        border: 1px solid rgba(15,118,110,0.15);
+        border-radius: 999px;
+        font-weight: 700;
+        color: var(--bpom-green);
     }
     .stTabs [aria-selected="true"] {
-        background-color: #3b82f6;
-        color: white;
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
-        border-radius: 10px;
+        background-color: var(--bpom-green);
         color: white;
     }
     .upload-section {
-        background-color: #f8fafc;
+        background-color: var(--bpom-card);
         padding: 1.5rem;
-        border-radius: 15px;
-        border: 2px dashed #cbd5e1;
+        border-radius: var(--bpom-radius);
+        border: 1px dashed rgba(15,118,110,0.35);
         margin-bottom: 1rem;
+        box-shadow: var(--bpom-shadow);
     }
     .success-box {
         background-color: #dcfce7;
         border-left: 4px solid #22c55e;
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 10px;
     }
     .warning-box {
         background-color: #fef3c7;
         border-left: 4px solid #f59e0b;
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 10px;
     }
     .info-box {
         background-color: #e0f2fe;
         border-left: 4px solid #0ea5e9;
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 10px;
+    }
+
+    div[data-testid="stMetric"] {
+        background: var(--bpom-card);
+        border: 1px solid var(--bpom-border);
+        border-radius: var(--bpom-radius);
+        padding: 12px 12px;
+        box-shadow: var(--bpom-shadow);
+    }
+
+    div[data-testid="stExpander"] > details {
+        background: var(--bpom-card);
+        border: 1px solid var(--bpom-border);
+        border-radius: var(--bpom-radius);
+        box-shadow: var(--bpom-shadow);
+    }
+
+    .stButton>button {
+        border-radius: 999px;
+        font-weight: 700;
+        border: 1px solid rgba(15,118,110,0.35);
+    }
+    .stButton>button[kind="primary"] {
+        background: var(--bpom-green);
+        border: 1px solid var(--bpom-green);
+    }
+    .stButton>button[kind="primary"]:hover {
+        background: #0b5f58;
+        border-color: #0b5f58;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-header">📊 Perbandingan Data Realisasi Impor</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Aplikasi untuk membandingkan dan menganalisis data impor dengan mudah</p>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="bpom-hero">
+        <div class="bpom-badge">BPOM • Analisis & Perbandingan Data</div>
+        <p class="bpom-hero-title">Perbandingan Data Realisasi Impor</p>
+        <p class="bpom-hero-sub">Aplikasi untuk membandingkan dan menganalisis data impor secara cepat, rapi, dan mudah di-review</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 tab_main, tab_hs, tab_analysis, tab_petugas, tab_absen, tab_importir, tab_merge = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data", "👤 Cek Petugas Loket S2", "📋 Cek Kehadiran", "🏢 Analisis Importir", "🔗 Gabung Data Excel"])
 

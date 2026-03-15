@@ -86,7 +86,8 @@ def _setup_playwright_env():
 
     os.environ['_PLAYWRIGHT_SETUP_DONE'] = '1'
 
-_setup_playwright_env()
+if os.environ.get('ENABLE_PLAYWRIGHT_SETUP') == '1':
+    _setup_playwright_env()
 
 st.set_page_config(
     page_title="Perbandingan Data Impor", 
@@ -2411,19 +2412,240 @@ with tab_importir:
 
             st.info(f"📊 Ditemukan **{len(unique_importers)}** importir unik yang perlu dianalisis.")
 
-            if st.button("🤖 Mulai Analisis Otomatis dengan AI", key="btn_analisis_importir"):
-                from openai import OpenAI
-                from concurrent.futures import ThreadPoolExecutor, as_completed
-                from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
-                import time
+            analysis_mode = st.radio(
+                "Mode analisis:",
+                ["Tanpa API (Gratis)", "Dengan AI (Butuh API Key)"],
+                index=0,
+                key="importir_analysis_mode"
+            )
 
-                ai_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
-                ai_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+            def _apply_importir_results(all_results, source_label):
+                df_result = df_with_header.copy()
 
-                if not ai_key or not ai_url:
-                    st.error("❌ AI Integration belum dikonfigurasi. Pastikan OpenAI AI Integration sudah terinstall.")
+                if selected_ket_col == "(Buat kolom baru)":
+                    ket_col_name = "Keterangan_AI"
+                    df_result[ket_col_name] = ""
                 else:
-                    client = OpenAI(api_key=ai_key, base_url=ai_url)
+                    ket_col_name = selected_ket_col
+
+                if selected_bidang_col == "(Buat kolom baru)":
+                    bidang_col_name = "Bidang_Usaha_AI"
+                    df_result[bidang_col_name] = ""
+                else:
+                    bidang_col_name = selected_bidang_col
+
+                alasan_col_name = "Alasan_Analisis"
+                df_result[alasan_col_name] = ""
+
+                def normalize_imp_name(n):
+                    return re.sub(r'[^A-Z0-9\s]', '', n).strip()
+
+                norm_map = {normalize_imp_name(k): v for k, v in all_results.items()}
+
+                filled_count = 0
+                for idx in range(len(df_result)):
+                    nama_val = str(df_result.at[idx, selected_nama_col]).strip().upper() if pd.notna(df_result.at[idx, selected_nama_col]) else ''
+                    if not nama_val or nama_val == 'NAN':
+                        continue
+
+                    if only_empty and selected_ket_col != "(Buat kolom baru)":
+                        existing = str(df_result.at[idx, ket_col_name]).strip() if pd.notna(df_result.at[idx, ket_col_name]) else ''
+                        if existing:
+                            continue
+
+                    nama_norm = normalize_imp_name(nama_val)
+                    matched = all_results.get(nama_val)
+                    if not matched:
+                        matched = norm_map.get(nama_norm)
+                    if not matched:
+                        nama_words = set(nama_val.split())
+                        best_score = 0
+                        for key, val in all_results.items():
+                            key_words = set(key.split())
+                            if len(nama_words) >= 2 and len(key_words) >= 2:
+                                common = len(nama_words & key_words)
+                                score = common / max(len(nama_words), len(key_words))
+                                if score > best_score and score >= 0.6:
+                                    best_score = score
+                                    matched = val
+
+                    if matched:
+                        df_result.at[idx, ket_col_name] = matched['kelas']
+                        df_result.at[idx, bidang_col_name] = matched['bidang']
+                        df_result.at[idx, alasan_col_name] = matched.get('alasan', '')
+                        filled_count += 1
+                    else:
+                        df_result.at[idx, ket_col_name] = 'CEK'
+                        df_result.at[idx, bidang_col_name] = 'Perlu cek manual'
+                        df_result.at[idx, alasan_col_name] = f"({source_label}) Data importir tidak dapat dianalisis secara otomatis, perlu pengecekan manual."
+                        filled_count += 1
+
+                st.session_state.importir_result = df_result
+                st.session_state.importir_ket_col = ket_col_name
+                st.session_state.importir_bidang_col = bidang_col_name
+                st.session_state.importir_alasan_col = alasan_col_name
+
+                out_imp = io.BytesIO()
+                with pd.ExcelWriter(out_imp, engine='openpyxl') as writer:
+                    df_result.to_excel(writer, index=False, sheet_name='Data Lengkap')
+
+                    wb = writer.book
+                    ws = wb['Data Lengkap']
+
+                    hdr_f_imp = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                    hdr_fn_imp = Font(bold=True, color='FFFFFF')
+                    green_fi = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
+                    yellow_fi = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+                    bdr_i = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+                    for cell in ws[1]:
+                        cell.fill = hdr_f_imp
+                        cell.font = hdr_fn_imp
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                        cell.border = bdr_i
+
+                    col_names_result = list(df_result.columns)
+                    ket_ci = col_names_result.index(ket_col_name) + 1 if ket_col_name in col_names_result else None
+                    bid_ci = col_names_result.index(bidang_col_name) + 1 if bidang_col_name in col_names_result else None
+
+                    if ket_ci:
+                        for ri in range(2, ws.max_row + 1):
+                            sv = str(ws.cell(row=ri, column=ket_ci).value or '').strip().upper()
+                            if sv == 'NOM':
+                                ws.cell(row=ri, column=ket_ci).fill = green_fi
+                                if bid_ci:
+                                    ws.cell(row=ri, column=bid_ci).fill = green_fi
+                            elif sv == 'CEK':
+                                ws.cell(row=ri, column=ket_ci).fill = yellow_fi
+                                if bid_ci:
+                                    ws.cell(row=ri, column=bid_ci).fill = yellow_fi
+                            ws.cell(row=ri, column=ket_ci).border = bdr_i
+                            if bid_ci:
+                                ws.cell(row=ri, column=bid_ci).border = bdr_i
+
+                    summary_data = []
+                    for name_upper, info in all_results.items():
+                        summary_data.append({
+                            'Nama Importir': name_upper,
+                            'Bidang Usaha': info['bidang'],
+                            'Klasifikasi': info['kelas'],
+                            'Alasan': info.get('alasan', '')
+                        })
+                    df_summary = pd.DataFrame(summary_data)
+                    df_summary.to_excel(writer, index=False, sheet_name='Ringkasan Importir')
+
+                    ws2 = wb['Ringkasan Importir']
+                    for cell in ws2[1]:
+                        cell.fill = hdr_f_imp
+                        cell.font = hdr_fn_imp
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                        cell.border = bdr_i
+
+                    kls_ci = 3
+                    for ri in range(2, ws2.max_row + 1):
+                        sv = str(ws2.cell(row=ri, column=kls_ci).value or '').strip().upper()
+                        for ci_x in range(1, ws2.max_column + 1):
+                            ws2.cell(row=ri, column=ci_x).border = bdr_i
+                        if sv == 'NOM':
+                            for ci_x in range(1, ws2.max_column + 1):
+                                ws2.cell(row=ri, column=ci_x).fill = green_fi
+                        elif sv == 'CEK':
+                            for ci_x in range(1, ws2.max_column + 1):
+                                ws2.cell(row=ri, column=ci_x).fill = yellow_fi
+
+                    for ws_x in [ws, ws2]:
+                        for ci_x in range(1, ws_x.max_column + 1):
+                            ml = 0
+                            for ri in range(1, min(ws_x.max_row + 1, 100)):
+                                cv = ws_x.cell(row=ri, column=ci_x).value
+                                if cv:
+                                    ml = max(ml, len(str(cv)))
+                            ws_x.column_dimensions[ws_x.cell(row=1, column=ci_x).column_letter].width = min(ml + 3, 50)
+
+                out_imp.seek(0)
+                st.session_state.importir_excel = out_imp.getvalue()
+                st.rerun()
+
+            if analysis_mode == "Tanpa API (Gratis)":
+                if st.button("⚙️ Mulai Analisis Otomatis (Tanpa API)", key="btn_analisis_importir_no_api"):
+                    cek_keywords = [
+                        'obat', 'farmasi', 'pharmaceutical', 'medicine', 'drug', 'bpom',
+                        'kosmetik', 'cosmetic', 'suplemen', 'supplement', 'vitamin', 'vaksin',
+                        'pangan', 'makanan', 'minuman', 'food', 'beverage',
+                        'herbal', 'tradisional', 'jamu'
+                    ]
+                    bidang_map = {
+                        'farmasi': ['farmasi', 'pharmaceutical', 'obat', 'medicine', 'drug', 'bahan baku obat', 'bahan obat'],
+                        'kosmetik': ['kosmetik', 'cosmetic', 'skincare', 'parfum', 'fragrance'],
+                        'pangan': ['pangan', 'makanan', 'minuman', 'food', 'beverage', 'flavour', 'flavor', 'ingredient'],
+                        'suplemen': ['suplemen', 'supplement', 'vitamin', 'vaksin'],
+                    }
+
+                    def _guess(importir_name, ctx):
+                        alamat = (ctx.get('alamat') or '')
+                        products = ctx.get('products') or []
+                        prod_texts = []
+                        for p in products[:5]:
+                            if p.get('barang'):
+                                prod_texts.append(str(p.get('barang')))
+                            if p.get('uraian'):
+                                prod_texts.append(str(p.get('uraian')))
+                        combined = (importir_name + ' ' + alamat + ' ' + ' '.join(prod_texts)).lower()
+
+                        is_cek = any(k in combined for k in cek_keywords)
+
+                        bidang = 'Perlu cek manual'
+                        for bname, keys in bidang_map.items():
+                            if any(k in combined for k in keys):
+                                if bname == 'farmasi':
+                                    bidang = 'Farmasi'
+                                elif bname == 'kosmetik':
+                                    bidang = 'Kosmetik'
+                                elif bname == 'pangan':
+                                    bidang = 'Pangan'
+                                elif bname == 'suplemen':
+                                    bidang = 'Suplemen Kesehatan'
+                                break
+
+                        kelas = 'CEK' if is_cek else 'NOM'
+
+                        contoh = ''
+                        if products:
+                            p0 = products[0]
+                            if p0.get('barang'):
+                                contoh = str(p0.get('barang'))
+                            elif p0.get('uraian'):
+                                contoh = str(p0.get('uraian'))
+                        if not contoh:
+                            contoh = '-'
+
+                        if kelas == 'CEK':
+                            alasan = f"(Tanpa API) Importir terindikasi terkait komoditas yang berpotensi diawasi BPOM (contoh: {contoh}). Disarankan klasifikasi CEK untuk verifikasi manual lebih lanjut berdasarkan uraian barang/HS dan profil perusahaan."
+                        else:
+                            alasan = f"(Tanpa API) Berdasarkan teks nama/alamat/uraian barang yang tersedia (contoh: {contoh}), tidak ditemukan indikasi kuat terkait komoditas BPOM. Diklasifikasikan NOM, namun tetap perlu verifikasi jika ada informasi tambahan."
+
+                        return {'bidang': bidang, 'kelas': kelas, 'alasan': alasan}
+
+                    all_results = {}
+                    for imp_name in unique_importers:
+                        all_results[imp_name.strip().upper()] = _guess(imp_name, importir_context.get(imp_name, {}))
+
+                    _apply_importir_results(all_results, "Tanpa API")
+
+            else:
+                if st.button("🤖 Mulai Analisis Otomatis dengan AI", key="btn_analisis_importir"):
+                    from openai import OpenAI
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+                    import time
+
+                    ai_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
+                    ai_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+
+                    if not ai_key or not ai_url:
+                        st.error("❌ AI Integration belum dikonfigurasi. Pastikan OpenAI AI Integration sudah terinstall.")
+                    else:
+                        client = OpenAI(api_key=ai_key, base_url=ai_url)
 
                     def is_rate_limit_error(exception):
                         error_msg = str(exception)
@@ -2554,151 +2776,7 @@ Daftar importir:
                     progress_bar.progress(1.0, text="✅ Analisis selesai!")
                     status_text.text(f"✅ Selesai! {len(all_results)} importir dianalisis" + (f" ({errors_count} batch error)" if errors_count else ""))
 
-                    df_result = df_with_header.copy()
-
-                    if selected_ket_col == "(Buat kolom baru)":
-                        ket_col_name = "Keterangan_AI"
-                        df_result[ket_col_name] = ""
-                    else:
-                        ket_col_name = selected_ket_col
-
-                    if selected_bidang_col == "(Buat kolom baru)":
-                        bidang_col_name = "Bidang_Usaha_AI"
-                        df_result[bidang_col_name] = ""
-                    else:
-                        bidang_col_name = selected_bidang_col
-
-                    alasan_col_name = "Alasan_Analisis"
-                    df_result[alasan_col_name] = ""
-
-                    def normalize_imp_name(n):
-                        return re.sub(r'[^A-Z0-9\s]', '', n).strip()
-
-                    norm_map = {normalize_imp_name(k): v for k, v in all_results.items()}
-
-                    filled_count = 0
-                    for idx in range(len(df_result)):
-                        nama_val = str(df_result.at[idx, selected_nama_col]).strip().upper() if pd.notna(df_result.at[idx, selected_nama_col]) else ''
-                        if not nama_val or nama_val == 'NAN':
-                            continue
-
-                        if only_empty and selected_ket_col != "(Buat kolom baru)":
-                            existing = str(df_result.at[idx, ket_col_name]).strip() if pd.notna(df_result.at[idx, ket_col_name]) else ''
-                            if existing:
-                                continue
-
-                        nama_norm = normalize_imp_name(nama_val)
-                        matched = all_results.get(nama_val)
-                        if not matched:
-                            matched = norm_map.get(nama_norm)
-                        if not matched:
-                            nama_words = set(nama_val.split())
-                            best_score = 0
-                            for key, val in all_results.items():
-                                key_words = set(key.split())
-                                if len(nama_words) >= 2 and len(key_words) >= 2:
-                                    common = len(nama_words & key_words)
-                                    score = common / max(len(nama_words), len(key_words))
-                                    if score > best_score and score >= 0.6:
-                                        best_score = score
-                                        matched = val
-
-                        if matched:
-                            df_result.at[idx, ket_col_name] = matched['kelas']
-                            df_result.at[idx, bidang_col_name] = matched['bidang']
-                            df_result.at[idx, alasan_col_name] = matched.get('alasan', '')
-                            filled_count += 1
-                        else:
-                            df_result.at[idx, ket_col_name] = 'CEK'
-                            df_result.at[idx, bidang_col_name] = 'Perlu cek manual'
-                            df_result.at[idx, alasan_col_name] = 'Data importir tidak dapat dianalisis secara otomatis, perlu pengecekan manual.'
-                            filled_count += 1
-
-                    st.session_state.importir_result = df_result
-                    st.session_state.importir_ket_col = ket_col_name
-                    st.session_state.importir_bidang_col = bidang_col_name
-                    st.session_state.importir_alasan_col = alasan_col_name
-
-                    out_imp = io.BytesIO()
-                    with pd.ExcelWriter(out_imp, engine='openpyxl') as writer:
-                        df_result.to_excel(writer, index=False, sheet_name='Data Lengkap')
-
-                        wb = writer.book
-                        ws = wb['Data Lengkap']
-
-                        hdr_f_imp = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
-                        hdr_fn_imp = Font(bold=True, color='FFFFFF')
-                        green_fi = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
-                        yellow_fi = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
-                        bdr_i = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-
-                        for cell in ws[1]:
-                            cell.fill = hdr_f_imp
-                            cell.font = hdr_fn_imp
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                            cell.border = bdr_i
-
-                        col_names_result = list(df_result.columns)
-                        ket_ci = col_names_result.index(ket_col_name) + 1 if ket_col_name in col_names_result else None
-                        bid_ci = col_names_result.index(bidang_col_name) + 1 if bidang_col_name in col_names_result else None
-
-                        if ket_ci:
-                            for ri in range(2, ws.max_row + 1):
-                                sv = str(ws.cell(row=ri, column=ket_ci).value or '').strip().upper()
-                                if sv == 'NOM':
-                                    ws.cell(row=ri, column=ket_ci).fill = green_fi
-                                    if bid_ci:
-                                        ws.cell(row=ri, column=bid_ci).fill = green_fi
-                                elif sv == 'CEK':
-                                    ws.cell(row=ri, column=ket_ci).fill = yellow_fi
-                                    if bid_ci:
-                                        ws.cell(row=ri, column=bid_ci).fill = yellow_fi
-                                ws.cell(row=ri, column=ket_ci).border = bdr_i
-                                if bid_ci:
-                                    ws.cell(row=ri, column=bid_ci).border = bdr_i
-
-                        summary_data = []
-                        for name_upper, info in all_results.items():
-                            summary_data.append({
-                                'Nama Importir': name_upper,
-                                'Bidang Usaha': info['bidang'],
-                                'Klasifikasi': info['kelas'],
-                                'Alasan': info.get('alasan', '')
-                            })
-                        df_summary = pd.DataFrame(summary_data)
-                        df_summary.to_excel(writer, index=False, sheet_name='Ringkasan Importir')
-
-                        ws2 = wb['Ringkasan Importir']
-                        for cell in ws2[1]:
-                            cell.fill = hdr_f_imp
-                            cell.font = hdr_fn_imp
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                            cell.border = bdr_i
-
-                        kls_ci = 3
-                        for ri in range(2, ws2.max_row + 1):
-                            sv = str(ws2.cell(row=ri, column=kls_ci).value or '').strip().upper()
-                            for ci_x in range(1, ws2.max_column + 1):
-                                ws2.cell(row=ri, column=ci_x).border = bdr_i
-                            if sv == 'NOM':
-                                for ci_x in range(1, ws2.max_column + 1):
-                                    ws2.cell(row=ri, column=ci_x).fill = green_fi
-                            elif sv == 'CEK':
-                                for ci_x in range(1, ws2.max_column + 1):
-                                    ws2.cell(row=ri, column=ci_x).fill = yellow_fi
-
-                        for ws_x in [ws, ws2]:
-                            for ci_x in range(1, ws_x.max_column + 1):
-                                ml = 0
-                                for ri in range(1, min(ws_x.max_row + 1, 100)):
-                                    cv = ws_x.cell(row=ri, column=ci_x).value
-                                    if cv:
-                                        ml = max(ml, len(str(cv)))
-                                ws_x.column_dimensions[ws_x.cell(row=1, column=ci_x).column_letter].width = min(ml + 3, 50)
-
-                    out_imp.seek(0)
-                    st.session_state.importir_excel = out_imp.getvalue()
-                    st.rerun()
+                    _apply_importir_results(all_results, "AI")
 
         except Exception as e:
             st.error(f"❌ Gagal membaca file: {str(e)}")

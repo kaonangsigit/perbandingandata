@@ -96,5 +96,5 @@ MIT License
 ---
 
 <p align="center">
-  Dibuat dengan ❤️ menggunakan Streamlit
+  Dibuat oleh Kaonang S.P
 </p>

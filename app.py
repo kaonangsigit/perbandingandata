@@ -3136,6 +3136,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #64748b; padding: 1rem;">
     <p>📊 Aplikasi Perbandingan Data Realisasi Impor</p>
-    <p style="font-size: 0.8rem;">Dibuat dengan ❤️ menggunakan Streamlit</p>
+    <p style="font-size: 0.8rem;">Dibuat oleh Kaonang S.P</p>
 </div>
 """, unsafe_allow_html=True)

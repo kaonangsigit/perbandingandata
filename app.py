@@ -239,7 +239,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-tab_main, tab_hs, tab_analysis, tab_petugas, tab_absen, tab_importir, tab_merge = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data", "👤 Cek Petugas Loket S2", "📋 Cek Kehadiran", "🏢 Analisis Importir", "🔗 Gabung Data Excel"])
+tab_main, tab_hs, tab_analysis, tab_petugas, tab_absen, tab_merge = st.tabs(["📋 Perbandingan Data", "💊 Cek HS Code Obat", "📈 Analisis Data", "👤 Cek Petugas Loket S2", "📋 Cek Kehadiran", "🔗 Gabung Data Excel"])
 
 def clean_value(value):
     if pd.isna(value):
@@ -2325,11 +2325,11 @@ with tab_absen:
     elif not file_pegawai or not file_hadir:
         st.info("👆 Silakan upload file **Data Pegawai** dan **Daftar Hadir** untuk memulai pengecekan.")
 
-with tab_importir:
+if False:
     st.markdown("### 🏢 Analisis Bidang Usaha Importir")
     st.markdown("Upload file Excel, pilih kolom **Nama Importir**, lalu sistem akan **otomatis menganalisis bidang usaha** setiap importir menggunakan AI dan menentukan apakah termasuk **CEK** (obat/kosmetik/OT/food) atau **NOM** (bukan komoditas BPOM).")
 
-    file_importir = st.file_uploader("Upload file Excel (.xlsx)", type=["xlsx", "xls"], key="file_importir_upload")
+    file_importir = st.file_uploader("Upload file Excel Importir (.xlsx/.xls)", type=["xlsx", "xls"], key="file_importir_upload")
 
     if 'importir_df_raw' not in st.session_state:
         st.session_state.importir_df_raw = None

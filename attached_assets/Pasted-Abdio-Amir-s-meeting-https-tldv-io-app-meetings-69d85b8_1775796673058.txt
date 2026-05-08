@@ -1,0 +1,79 @@
+Abdio Amir's meeting
+https://tldv.io/app/meetings/69d85b8ca6dc5b00136e1250
+1. Item Tindakan
+ Tim Mutu memperbarui RTL untuk tiga laporan obat TMS yang sudah keluar surat tindak lanjut 05:05
+ Tim Mutu menjadwalkan pemanggilan industri untuk tiga laporan obat TIE pada 15-16 April 05:05
+ Tim IO dan IPT menyesuaikan definisi operasional IKU steering pengawasan iklan dan penandaan obat 35:12
+ Tim PV dan tim teknis lainnya mendiskusikan intensif reformulasi perhitungan IKU steering keamanan 32:19
+ Tim IO menyusun usulan perubahan definisi operasional dengan justifikasi dan kertas kerja 35:16
+ Pak Faris dan Mbak Aulia serta Vika mendiskusikan formula perhitungan IKU steering lebih intensif 32:19
+ Tim IUBU mengubah mekanisme perhitungan tindak lanjut mulai TW2 bulan April 46:24
+ Tim Keamanan dan Mutu melakukan workshop peningkatan kapasitas SDM UPT di TW1 49:25
+ Tim IO melakukan demo tips and tricks pengawasan iklan yang efektif 50:18
+ Tim IPT mengurangi kecepatan pengawasan label tembakau agar capaian di bawah 110% 54:11
+ Tim IPT melakukan BIMTEK berkala dan intensifikasi kepada UPT untuk keselarasan persepsi 59:58
+ Ke Mei mengoptimalkan realisasi anggaran RO dengan kegiatan teknis di TW2 01:09:42
+ Ke Mei melakukan FKIN back to back dengan kegiatan teknis tanpa terlihat hanya FKIN 01:11:38
+ Masing-masing tim kerja memperbarui kode risiko prioritas di kolom N matriks kendala 01:22:10
+ Tim akuntabilitas mengumpulkan informasi RTL dari penanggung jawab dengan target TW1 01:56:24
+ Tim akuntabilitas melengkapi laporan evaluasi internal dengan deadline 13 April 02:02:17
+2. Capaian Indikator Kinerja
+Persentase hasil pengawasan mutu NPP diselesaikan mencapai 70,35% kategori cukup di TW1 01:13
+Enam laporan obat TMS masuk akhir Maret memerlukan waktu tindak lanjut hingga TW2 01:13
+Tiga laporan obat TMS sudah keluar surat tindak lanjut dan tiga siap panggil industri 05:05
+IKU steering pengawasan keamanan mutu informasi obat mencapai 50,97% kategori kurang 07:39
+Tim keamanan mencapai 12,01% dengan kendala kompetensi PV SDM UPT belum rata 08:15
+Tim mutu menghadapi kendala implementasi sampling pengujian UPT belum sesuai standar 08:49
+Persentase iklan obat memenuhi ketentuan mencapai 111,30% kategori tidak dapat disimpulkan 48:40
+Persentase label produk tembakau rokok elektronik memenuhi ketentuan mencapai 110,24% 53:43
+Realisasi anggaran Ke Mei TW1 hanya 5,63% dari target 15% 01:08:11
+3. Kendala dan Hambatan
+Laporan obat TMS diterima pertengahan hingga akhir TW1 memerlukan waktu proses tindak lanjut 01:13
+Timeline tindak lanjut maksimal 57 hari kerja sesuai SOP Mikro 01:30
+Kompetensi SDM UPT belum rata menyebabkan implementasi sampling pengujian tidak sesuai standar 08:49
+Rotasi petugas UPT menyebabkan dinamika dalam pelaksanaan pengawasan mutu 08:49
+Definisi operasional IO tidak tepat karena mengukur tindak lanjut pusat bukan UPT 10:20
+Target PV diukur akhir tahun sementara steering diukur per triwulan menyebabkan ketidaksesuaian 15:30
+Laporan KTDSO bersifat sukarela sehingga sulit diprediksi per triwulan 21:03
+Program PV baru berjalan tahun lalu belum semua UPT sehingga belum ada baseline 23:44
+Metode KIE daring hybrid mempengaruhi efektivitas dan hasil pelaporan KTDSO 24:10
+Mekanisme perhitungan tindak lanjut IUBU menggunakan SIPT bukan surat ke industri 37:30
+Carryover laporan TMS tahun 2025 belum terselesaikan menambah beban TW1 2026 38:47
+Target 96,7% tindak lanjut tidak realistis dengan perubahan mekanisme perhitungan 41:59
+Pemahaman inspektur tentang cara pendidikan iklan masih perlu ditingkatkan 49:25
+Pelaporan dari UPT sering di akhir-akhir periode menjelang batas waktu 54:28
+Laporan dari UPT seringkali tidak lengkap terutama foto hasil pengawasan penandaan 55:11
+Regulasi baru PP28 tahun 2024 untuk produk tembakau diimplementasikan tahun 2025 57:50
+Rokok elektronik produk baru belum dilaporkan ke SIPT memerlukan bimbingan teknis 58:19
+Petugas baru UPT sering ditugaskan pengawasan tembakau tanpa BIMTEK sebelumnya 59:33
+Efisiensi anggaran membatasi pelaksanaan kegiatan pengawasan dan pelatihan SDM 01:40:43
+4. Rekomendasi dan Arahan
+Tindak lanjut harus sampai penerbitan surat ke industri bukan hanya SIPT 41:23
+Target tindak lanjut perlu disesuaikan menjadi lebih realistis sekitar 70% 44:03
+Perubahan mekanisme perhitungan tindak lanjut dimulai TW2 bulan April 46:24
+Monitoring capaian per bulan untuk mendeteksi dini jika jauh dari target 46:46
+Penyesuaian target tindak lanjut dapat diajukan di akhir TW2 jika diperlukan 47:24
+Fokus pengawasan iklan pada kualitas bukan hanya kuantitas laporan 50:07
+Peningkatan target iklan obat dapat diajukan ke Roren dengan senang hati 53:03
+Pengawasan rokok elektronik akan dimulai resmi akhir Juli dengan banyak kendala awal 01:00:31
+Antisipasi banyak temuan rokok elektronik karena regulasi baru dan industri belum siap 01:02:03
+Aspek positif capaian Ke Mei perlu tetap ditonjolkan untuk afirmasi positif 01:14:36
+Kode risiko yang dicantumkan hanya yang prioritas dan terkait langsung indikator 01:45:29
+Kode risiko harus relevan dengan rencana tindak lanjut dan terdaftar dalam Sapa Apip 01:59:30
+5. Pencapaian Positif
+Ke Mei mendapat peringkat nomor 1 penilaian NKU Kedeputihan 1 tahun 2025 01:57:32
+Capaian Ke Mei tahun 2026 lebih baik dibanding tahun sebelumnya dan unit sejenis 01:57:32
+Tim mutu sudah menyelesaikan 12 laporan obat dalam TW1 2026 02:11
+Tim IO dan IPT mencapai capaian sangat baik dalam pengawasan produk 47:46
+Tim Eksim tidak menghadapi hambatan dalam pelaksanaan pengawasan ekspor-impor 01:03:29
+6. Diskusi Teknis
+Perhitungan indikator mutu berdasarkan laporan yang diselesaikan dibagi laporan masuk 02:11
+Proses tindak lanjut obat TMS meliputi verifikasi internal pembahasan unit pemanggilan industri 02:11
+Capaian mutu masih on track dan memenuhi timeline SOP meskipun presentasi menurun 07:02
+IKU steering mengukur pelaksanaan pengawasan UPT bukan tindak lanjut pusat 11:30
+PV tidak bisa diukur per triwulan karena target kumulatif akhir tahun 18:58
+Efektivitas KIE diukur dari jumlah laporan KTDSO dari faskes yang diberi KIE 21:03
+Pengawasan label tembakau mengalami gap pemahaman antara UPT dan pusat 56:31
+Pengawasan rokok elektronik akan terlihat masif di TW3 dan TW4 01:01:06
+Manual notes
+No manual notes yet

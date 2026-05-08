@@ -1,0 +1,49 @@
+5/7/2026-Meeting(Audio)
+https://tldv.io/app/meetings/69fc2c0d461af60014aaa72b
+1. Item Tindakan
+ Mas Rizky mendiskusikan mekanisme penerbitan SPB 0 rupiah dengan tim iPayment dan Mas Andri 45:56
+ Mbak Aprilia membagikan tampilan OSS untuk memperjelas proses upload bukti bayar 21:48
+ Pusudatin menyiapkan kode PNBP baru untuk layanan baru, pembaruan, perubahan administrasi, dan perubahan teknis 16:16
+ Mas Rizky mensosialisasikan cara membuat billing ID kepada seluruh UPT dan LOKA 01:53:17
+ Kepala Unit Kerja menandatangani berita acara kesepakatan dan menguploadnya di kolom konfirmasi unit 02:06:30
+ Tim Pusudatin menyelesaikan kode referensi tarif PNBP sebelum tanggal 21 Mei 01:52:04
+2. Penerbitan IP CPPOB dan Pembayaran PNBP
+Kemajuan penyelesaian pekerjaan untuk penerbitan IP CPPOB masih belum final dan memerlukan diskusi dengan Bukus Daging 06:11
+Perbedaan tanggal surat dan tanggal upload di aplikasi perlu dikoordinasikan dengan Pusdatin 07:21
+Perubahan teknis belum tersedia di aplikasi disertifikasi dan belum ada pelayanan terkait 08:00
+Pendaftaran dalam rangka IP CPPOB masih belum final karena ada peran balai dan peran pusat 08:17
+3. Pembagian Peran SPA-CPKB Golongan A
+Perubahan administrasi untuk SPA-CPKB golongan A diusulkan penuh oleh pusat, bukan balai 13:18
+Untuk SPA-CPKB golongan A, 90% proses di balai dan 10% penetapan di pusat 11:14
+Pengakuan PNBP 100% untuk SPA-CPKB golongan A dilakukan oleh balai, bukan pusat 01:25:12
+Balai dapat melihat penyelesaian penetapan melalui akun verifikator di OSS 01:25:56
+4. Mekanisme Pembayaran PNBP 0 Rupiah
+Untuk PNBP 0 rupiah, tetap diterbitkan SPB dengan status lunas bayar 42:21
+Pertanyaan "apakah memerlukan pembayaran PNBP" dijawab "iya" untuk layanan 0 rupiah 42:20
+Bukti pembayaran untuk 0 rupiah dapat berupa screenshot SPB dari e-payment atau cetak SPB 44:42
+Pelanggan dapat melacak billing 0 rupiah melalui menu tracking di e-payment 49:19
+5. Sertifikasi CPKB dan Relaksasi Pemeriksaan
+Untuk pembaharuan CPKB, relaksasi memungkinkan resertifikasi tanpa audit berdasarkan track record dan analisis risiko 01:02:01
+Notadinas hasil evaluasi re-sertifikasi CPKB dapat ditambahkan sebagai dokumen untuk relaksasi pemeriksaan 01:05:14
+Relaksasi pemeriksaan tanpa audit hanya berlaku untuk pembaharuan, bukan penerbitan baru 01:06:52
+6. Inspeksi dan Tarif Kapal
+Mulai tanggal 26 Mei, tarif kapal tidak lagi dikenakan untuk layanan inspeksi 01:22:06
+Untuk inspeksi yang sudah dilaksanakan sebelum 26 Mei, tarif kapal masih berlaku sesuai PP 32 01:20:23
+Laporan inspeksi tanpa permintaan kapal dianggap 100% selesai 01:16:58
+7. Masalah Data Hilang di OSS
+Data permohonan dapat hilang dari OSS ketika pelaku usaha melakukan perubahan data saat masih berproses 01:29:41
+BKPM masih dapat membantu menampilkan kembali data yang hilang di OSS, meskipun memerlukan usaha 01:38:19
+Bukti pembayaran dari rekap manual tetap berlaku meskipun data hilang di OSS 01:34:06
+8. Rekomendasi dan Penolakan Layanan
+Untuk rekomendasi, pengakuan PNBP 25% saat pembayaran diterima dan 100% saat terbit rekomendasi atau penolakan 01:44:10
+Status penolakan di sistem sudah valid dan tidak perlu surat penolakan manual 01:45:12
+Penolakan dapat berasal dari sistem atau dari pelaku usaha yang membatalkan permohonan 02:32:54
+9. Sertifikasi Pemenuhan Standar dan Komitmen
+Untuk sertifikasi pemenuhan standar, pengakuan PNBP 0% saat pembayaran dan 100% saat penerbitan atau penolakan 02:15:57
+SLA untuk sertifikasi pemenuhan standar penerbitan baru adalah 20 hari kerja 02:21:23
+Untuk SMKPO skala mikro-kecil, tarif PNBP adalah 0 rupiah sesuai Pasal 3 PP 15 2026 02:23:24
+10. Variasi Akun dan Registrasi
+Variasi akun untuk registrasi masih pending karena menunggu dukungan dari RTO 02:43:47
+Perubahan data akun perusahaan dapat melibatkan dua unit berbeda tergantung jenis perubahan 02:44:58
+Manual notes
+No manual notes yet

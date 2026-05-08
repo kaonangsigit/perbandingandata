@@ -1,0 +1,74 @@
+{
+  "abdio_amir": {
+      "rapat_id": "69d85b8ca6dc5b00136e1250",
+      "poin_pertemuan": [
+         {
+            "nomor": 1,
+            "judul": "Item Tindakan",
+            "deskripsi": [
+               {
+                  "tim": "Tim Mutu",
+                  "giatan": "Memperbarui RTL untuk tiga laporan obat TMS yang sudah keluar surat tindak lanjut",
+                  "waktu": "05:05"
+               },
+               {
+                  "tim": "Tim Mutu",
+                  "giatan": "Mengjadwalkan pemanggilan industri untuk tiga laporan obat TIE pada 15-16 April",
+                  "waktu": "05:05"
+               },
+               {
+                  "tim": "Tim IO dan IPT",
+                  "giatan": "Menyesuaikan definisi operasional IKU steering pengawasan iklan dan penandaan obat",
+                  "waktu": "35:12"
+               },
+               {
+                  "tim": "Tim PV dan tim teknis lainnya",
+                  "giatan": "Mendiskusikan intensif reformulasi perhitungan IKU steering keamanan",
+                  "waktu": "32:19"
+               },
+               {
+                  "tim": "Tim IO",
+                  "giatan": "Menyusun usulan perubahan definisi operasional dengan justifikasi dan kertas kerja",
+                  "waktu": "35:16"
+               },
+               {
+                  "orang": "Pak Faris, Mbak Aulia, Vika",
+                  "giatan": "Mendiskusikan formula perhitungan IKU steering lebih intensif",
+                  "waktu": "32:19"
+               },
+               {
+                  "tim": "Tim IUBU",
+                  "giatan": "Mengubah mekanisme perhitungan tindak lanjut mulai TW2 bulan April",
+                  "waktu": "46:24"
+               },
+               {
+                  "tim": "Tim Keamanan dan Mutu",
+                  "giatan": "Melakukan workshop peningkatan kapasitas SDM UPT di TW1",
+                  "waktu": "49:25"
+               },
+               {
+                  "tim": "Tim IO",
+                  "giatan": "Melakukan demo tips and tricks pengawasan iklan yang efektif",
+                  "waktu": "50:18"
+               },
+               {
+                  "tim": "Tim IPT",
+                  "giatan": "Mengurangi kecepatan pengawasan label tembakau agar capaian di bawah 110%",
+                  "waktu": "54:11"
+               },
+               {
+                  "tim": "Tim IPT",
+                  "giatan": "Melakukan BIMTEK berkala dan intensifikasi kepada UPT untuk keselarasan persepsi",
+                  "waktu": "59:58"
+               },
+               {
+                  "orang": "Ke Mei",
+                  "giatan": "Mengoptimalkan realisasi anggaran RO dengan kegiatan teknis di TW2",
+                  "waktu": "01:09:42"
+               },
+               {
+                  "orang": "Ke Mei",
+                  "giatan": "Melakukan FKIN back to back dengan kegiatan teknis tanpa terlihat hanya FKIN",
+                  "waktu": "01:11:38"
+               }
+            

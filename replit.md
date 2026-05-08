@@ -53,7 +53,8 @@ Preferred communication style: Simple, everyday language.
 ### Python Libraries
 - **streamlit**: Web application framework for data apps
 - **pandas**: Data manipulation and Excel file reading
-- **openpyxl** (implicit): Required by pandas for .xlsx file support
+- **openpyxl**: Required by pandas for .xlsx file support, also used directly for format-preserving Excel merge
+- **python-docx**: Word document (.docx) generation for notulen rapat feature
 - **playwright**: Headless browser automation for INSW website scraping (requires chromium + mesa-libgbm system dep)
 
 ### System Dependencies
@@ -98,13 +99,26 @@ Preferred communication style: Simple, everyday language.
    - Session state keyed to file identity to prevent stale results
 
 7. **Gabung Data Excel** (Tab 7 in app.py): Merge data from two Excel files
-   - Upload File Utama (with empty cells) and File Pelengkap (with filled data)
+   - Opens File Utama with openpyxl directly (preserves all original formatting: filters, colors, fonts, column widths)
+   - Only fills empty cells from File Pelengkap, never overwrites existing data (unless overwrite mode enabled)
+   - Uses pandas for fast File Pelengkap reading, openpyxl only for File Utama (format preservation)
+   - Progress bar with per-column progress tracking
    - Auto-detect headers, select specific columns or merge all
    - Option to set row range and overwrite mode
-   - Color-coded Excel output with merge statistics report sheet
    - Session state keyed to file identity
 
+8. **Notulen Rapat** (Tab 8 in app.py): Meeting minutes document generator
+   - Generates .docx files following official notulen template format
+   - Sections: Informasi Rapat (table), Pendahuluan, Pembahasan (multiple speakers), Dokumentasi (photos), Kesimpulan (numbered), Notulis
+   - Uses python-docx for document generation with Arial 12pt, A4 page, justified alignment
+   - Photo documentation: supports multiple images (max 10, max 5MB each), arranged 2-per-row
+   - Dynamic pembahasan: add/remove speaker sections
+   - Safe filename generation with regex sanitization
+   - Download as .docx file
+
 ## Recent Changes
+- 2026-03-16: Added Notulen Rapat tab (Tab 8) for generating meeting minutes in .docx format
+- 2026-03-15: Improved Gabung Data Excel to preserve original file formatting using openpyxl directly
 - 2026-03-15: Added Gabung Data Excel tab for merging two Excel files
 - 2026-03-13: Added Analisis Importir tab with AI-powered business classification
 - 2026-03-09: Added Cek Kehadiran tab for attendance checking

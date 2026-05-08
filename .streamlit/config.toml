@@ -1,12 +1,7 @@
 [server]
 headless = true
+address = "0.0.0.0"
+port = 5000
 maxUploadSize = 500
 enableXsrfProtection = false
 maxMessageSize = 500
-
-[theme]
-primaryColor = "#0f766e"
-backgroundColor = "#f6fbf9"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#0f172a"
-font = "sans serif"

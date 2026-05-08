@@ -1,0 +1,57 @@
+5/7/2026-Meeting(Audio)
+https://tldv.io/app/meetings/69fc59dfb75f9e00134fd0de
+1. Item Tindakan
+ Mas Endi konfirmasi surat persetujuan perubahan (SPP) untuk variasi yang tidak mengubah edisi 01:49:57
+ Mbak Lely selesaikan perbaikan RTO dan detail status dokumen NIE registrasi 01:51:54
+ Mas Yoga konfirmasi output dan accrual untuk inspeksi BE luar negeri 02:10:52
+ Mas Yoga pastikan ada penolakan untuk rekomendasi importer maksimal besok 02:28:52
+ Mbak Estia konfirmasi perubahan administrasi FASBR apakah 0-100 atau 25-75-100 02:09:51
+ Mas Rangga diskusikan dengan Mbak Estia terkait accrual perubahan administrasi FASBR 02:08:43
+ Mbak Liz konfirmasi 75% untuk rekomendasi importer jika tidak diperlukan KAPA 02:46:17
+ Mas Yudi input hasil update IPC-PPOB maksimal besok pagi 02:50:36
+ Semua kepala unit kerja kirim surat konfirmasi hasil kesepakatan maksimal besok 02:53:21
+2. Pengakuan Pendapatan dan Accrual
+Kategori pangan berklaim atau minuman berawal menghasilkan dua output: izin edar atau penolakan 05:23
+Status dokumen 0% saat evaluator proses penilaian, 100% saat terbit izin atau penolakan 05:36
+Pengakuan 0% untuk semua tahap sebelum terbit izin edar, bukan per tahap detail 22:27
+Sertifikat pemenuhan komitmen tetap 0-100 karena risiko carry over di akhir tahun 01:04:42
+Surat keterangan penerapan CPOB diakui 0-100 saat diterbitkan atau ditolak 01:26:50
+Analisis hasil pengawasan AHP impor diakui 100% saat diterbitkan atau status penolakan 01:32:09
+3. Output dan Dokumen Layanan
+SKE untuk obat berupa Certificate of Pharmaceutical Product (CPP) 50:26
+SKE memiliki beberapa bentuk: CFS, Certificate Official, CPP, Health Certificate 01:15:52
+Surat persetujuan SAS dikeluarkan untuk semua komoditi Deputi 1, 2, dan 3 01:19:42
+Status penolakan untuk SAS berupa status di aplikasi, bukan surat penolakan 01:19:02
+Surat respon close KAPA menjadi output 100% untuk inspeksi BE luar negeri 02:14:07
+Notifikasi disetujui atau ditolak untuk registrasi 20 hari kerja tanpa SPP atau NIE 02:17:49
+4. Tarif dan Biaya
+Sertifikasi ekspor SKE untuk UMK ditetapkan 0 rupiah sesuai pasal 3 ayat 2 huruf D 52:20
+UMK terdeteksi via data OSS sehingga biaya SKE otomatis 0 rupiah di IBPOM 57:56
+Sertifikat iradiasi untuk UMK tetap 0 rupiah meskipun tidak disebutkan di depan 58:25
+Inspeksi BE luar negeri dalam rangka MRABE kesepakatan ASEAN 500 USD 02:15:27
+CPO BAP bertahap dengan tarif 0 rupiah memerlukan koordinasi penerbitan SPB 01:45:29
+5. Proses Bisnis dan SLA
+Registrasi pangan olahan memiliki 12 tahap dari pendaftaran hingga terbit izin 21:57
+SKI untuk AHP impor SLA 3 hari kerja dengan kesempatan revisi 3 kali masing-masing 7 hari 01:31:02
+Sertifikat penerapan CPOB selesai dalam 8 jam tanpa risiko carry over 01:22:00
+AHP impor ada cut off akhir Desember sehingga tidak ada carry over lintas tahun 01:31:44
+Rekomendasi importer evaluasi dokumen awal sampai close KAPA di luar sistem 02:27:00
+Penolakan rekomendasi importer terjadi jika pelaku usaha tidak responsif revisi dokumen 02:45:20
+6. Sistem dan Aplikasi
+Registrasi baru pangan olahan menggunakan IREG RBA dan IREG lama dengan notasi berbeda 01:02:21
+Perubahan administrasi FASBR belum ada layanan di aplikasi isertifikasi 02:03:20
+Rekomendasi importer menggunakan OSS manual dengan hak akses terbatas evaluator 02:23:18
+Penolakan rekomendasi importer di OSS memerlukan pelaku usaha kirim ulang dokumen 02:32:05
+CPO BAP bertahap memerlukan modul baru di e-sertifikasi untuk penerbitan SPB otomatis 01:47:04
+7. Koordinasi dan Sosialisasi
+Sosialisasi internal ke UPT terkait layanan yang dulu gratis sekarang berbayar diperlukan 02:52:23
+Pertemuan teknis minggu depan dengan seluruh balai dan loka untuk sosialisasi 02:40:42
+Pertemuan dengan Kemenkyu tanggal 12 untuk minta masukan regulasi PNBP 02:46:54
+Diskusi dengan Pusdatin terkait penerbitan SPB untuk status RP0 masih berlanjut 02:54:12
+8. Isu dan Catatan Penting
+Tarif 500 USD untuk inspeksi BE luar negeri perlu dirupiahkan untuk laporan keuangan 02:16:26
+Status penolakan harus diperkuat dengan peraturan teknis yang jelas tentang kategorinya 01:36:52
+Penolakan rekomendasi importer bisa terjadi di awal jika salah komoditi tanpa inspeksi 02:40:19
+Penerbitan billing untuk CPO BAP bertahap masih manual dan belum otomatis di sistem 02:23:36
+Manual notes
+No manual notes yet

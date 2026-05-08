@@ -218,3 +218,6 @@ Buka browser ke **http://localhost:5000** ✅
 <div align="center">
   <sub>Dibuat untuk Direktorat Pengawasan KMEI · BPOM RI</sub>
 </div>
+<div align="center">
+  <sub>BY Kaonang</sub>
+</div>
